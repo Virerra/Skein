@@ -16,20 +16,89 @@ npm install
 npm run dev
 ```
 
-You'll need an Anthropic API key (BYOK — entered in the app, kept in
-memory only, never persisted or sent anywhere but api.anthropic.com).
+Open Settings (gear icon) to configure a model provider before your
+first extraction — see "Model providers" below. Then use "Add
+transcript" to paste a chat transcript and extract claims from it.
 
 ## What's here
 
 - `src/lib/db.js` — IndexedDB storage. One `claims` object store.
-- `src/lib/extraction.js` — calls Claude directly from the browser to
-  pull atomic claims out of a pasted transcript.
+- `src/lib/extraction.js` — dispatcher that routes to whichever
+  provider is configured in Settings; shares one claim-shaping step
+  (id/timestamp/status) across all of them.
+- `src/lib/providers/` — `anthropic.js`, `openaiCompatible.js` (also
+  covers local models), `webllm.js` (experimental). See "Model
+  providers" below.
+- `src/lib/settings.js` — localStorage-backed provider/model/theme
+  settings. The API key itself is never stored here — see "Model
+  providers".
 - `src/lib/graphModel.js` — conflict detection + chain building.
 - `src/lib/query.js` — retrieval for the query bar.
-- `src/components/` — app-specific UI (ingest form, graph canvas,
-  thread/chain detail panel).
-- `src/design/` — components and tokens pulled directly from the
-  Claude Design system export (`Skein_Design_System.zip`), unmodified.
+- `src/lib/topicColor.js` — deterministic, collision-checked topic →
+  hue assignment; theme-aware (see "Visual identity").
+- `src/components/` — app-specific UI: `IngestPanel`/`TranscriptEditor`
+  (ingest modal), `SettingsPanel` (provider + theme config),
+  `GraphCanvas` (the graph itself), `ThreadPanel` (chain detail, claim
+  edit/discard controls).
+- `src/design/` — components and tokens originally pulled from the
+  Claude Design system export (`Skein_Design_System.zip`). The
+  neumorphic soft-shadow treatment from that export was mostly
+  replaced with flat chrome, then brought back deliberately for
+  buttons and cluster-filter rows only — see "Visual identity".
+
+## Model providers
+
+Settings (gear icon) lets you pick how extraction runs:
+
+- **Anthropic (BYOK)** — your own Anthropic API key.
+- **OpenAI-compatible (BYOK or local model)** — one adapter that
+  covers OpenAI itself, Gemini's OpenAI-compatible endpoint, *and* any
+  locally-running server that speaks the same shape (Ollama, LM
+  Studio, vLLM, etc.) — point the base URL at your own server instead
+  of a hosted one, no key required if your server doesn't need one.
+- **WebLLM (free, in-browser, experimental)** — runs a small model
+  entirely in your browser via WebGPU, no key, no server. Marked
+  experimental because it needs the page to be cross-origin isolated
+  (`Cross-Origin-Opener-Policy`/`Cross-Origin-Embedder-Policy` response
+  headers) for reliable multi-threaded performance, and GitHub Pages
+  can't set custom headers. Settings shows a live readout of whether
+  your browser/host actually supports it before you rely on it.
+
+Whichever provider you pick, the API key (if any) is kept in memory
+only for the session — never written to localStorage or IndexedDB.
+Only the non-secret choice of provider/model/base-URL/theme persists.
+
+## Visual identity
+
+The graph (`src/components/GraphCanvas.jsx`) is a hand-rolled
+force-directed layout and SVG renderer, not Cytoscape (removed —
+it's what dropped the production bundle from ~640KB to ~210KB).
+Claims render as knots, colored by topic (a small warm-neutral
+palette in `src/lib/topicColor.js`, collision-checked so two
+different topics never land on the same hue, with a separate deeper
+palette for light mode so contrast holds up) and shaped by status:
+alive claims sit raised with a soft molded shadow and a gentle glow;
+superseded ones sink flush and flat. Supersession edges leading into
+the current claim glow solid gold; edges between dead ancestors are a
+plain thin line. Neumorphism is scoped to the graph's knots, buttons,
+and cluster-filter rows (raised at rest / pressed-in when active) —
+everything else (cards, inputs, panels) stays flat.
+
+Dark is the default theme; light is available from Settings. Both
+share the same token names (`src/styles/colors.css`) — light mode
+overrides the token *values*, not the components, via
+`:root[data-theme="light"]`.
+
+## Node editing
+
+Selecting a claim's chain in the right-hand panel (`ThreadPanel`)
+exposes **edit** (rewrite the text, or change its topic to
+recategorize it) and **discard** per claim. Discard is a soft delete —
+it sets `status: "discarded"`, which hides the claim from the graph,
+cluster filter, and query results, but the row stays in IndexedDB and
+still renders in a chain's history (tagged `[DISCARDED]`) if it was a
+link in one. Deliberate: "nothing is ever deleted or overwritten" is
+the product's whole premise, so true destructive delete isn't offered.
 
 ## What's naive on purpose
 
@@ -39,12 +108,9 @@ memory only, never persisted or sent anywhere but api.anthropic.com).
   scoring + an LLM judgment call once this starts mattering.
 - **Retrieval** (`query.js`) is keyword overlap, not embeddings. Fine
   for proving the "walk the chain" UX, not real RAG yet.
-- **Extraction** always goes to the Anthropic API (BYOK). The brief's
-  default-to-local-model plan (WebLLM) is still the target, but it
-  needs `Cross-Origin-Embedder-Policy` / `Cross-Origin-Opener-Policy`
-  response headers for multithreaded WASM, and GitHub Pages can't set
-  custom headers. Needs either a single-threaded WebLLM fallback or a
-  different static host before that path is real.
+- **WebLLM** is scaffolded and feature-detected but unverified on a
+  real GitHub Pages deploy — see "Model providers" above. BYOK and
+  local-model-via-custom-endpoint are the two paths that work today.
 
 ## Deploying
 

@@ -1,0 +1,118 @@
+// Experimental in-browser provider via WebLLM. Multi-threaded WebLLM
+// needs the page to be cross-origin isolated (COOP/COEP response
+// headers), which a static host like GitHub Pages can't set -- this
+// module feature-detects and reports its real status instead of
+// silently failing, per README's already-documented caveat. The
+// package itself is dynamically imported so it never lands in the
+// bundle for users who don't select this provider.
+
+export function checkWebLLMSupport() {
+  const hasWebGPU = typeof navigator !== "undefined" && !!navigator.gpu;
+  const isolated = typeof window !== "undefined" && window.crossOriginIsolated === true;
+
+  let note;
+  if (!hasWebGPU) {
+    note = "This browser doesn't expose WebGPU -- WebLLM can't run here. Use BYOK or a local model instead.";
+  } else if (!isolated) {
+    note = "WebGPU is available, but this page isn't cross-origin isolated (needs COOP/COEP response headers, which this host may not set). Model loading may be slow or fail.";
+  } else {
+    note = "WebGPU and cross-origin isolation are both available -- WebLLM should work on this device.";
+  }
+
+  return { supported: hasWebGPU, hasWebGPU, crossOriginIsolated: isolated, note };
+}
+
+// WebGPU failures surface as raw driver/compiler internals ("[Invalid
+// ShaderModule (unlabeled)] is invalid due to a previous error...")
+// which mean nothing to a user picking a model from a dropdown --
+// translated here into what actually went wrong and what to do about
+// it. Falls through to the original error for anything unrecognized,
+// so genuinely novel failures aren't hidden, just the known-noisy ones.
+function friendlyWebLLMError(e) {
+  const msg = e?.message || String(e);
+
+  if (/out of memory|oom/i.test(msg)) {
+    return new Error("This model needs more GPU memory than your device has available. Try a smaller WebLLM model in Settings.");
+  }
+  if (/shadermodule|compute stage|pipeline|validating|adapter|device was lost/i.test(msg)) {
+    return new Error("This model failed to run on your GPU (a WebGPU compilation error). Try a different WebLLM model in Settings, or switch to a BYOK/local-model provider instead.");
+  }
+  if (/\.wasm|\.bin\b|download/i.test(msg)) {
+    return new Error("The model failed to download completely. Check your connection and try again.");
+  }
+  return e;
+}
+
+let enginePromise = null;
+let enginePromiseModel = null;
+
+function discardEngineCache() {
+  enginePromise = null;
+  enginePromiseModel = null;
+}
+
+async function getEngine(model) {
+  if (!enginePromise || enginePromiseModel !== model) {
+    enginePromiseModel = model;
+    enginePromise = (async () => {
+      const webllm = await import("@mlc-ai/web-llm");
+      return webllm.CreateMLCEngine(model);
+    })();
+  }
+  return enginePromise;
+}
+
+export async function extractWithWebLLM({ transcript, systemPrompt, model, signal }) {
+  const support = checkWebLLMSupport();
+  if (!support.hasWebGPU) throw new Error(support.note);
+
+  const resolvedModel = model || "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+
+  let engine;
+  try {
+    engine = await getEngine(resolvedModel);
+  } catch (e) {
+    discardEngineCache(); // don't keep serving a broken init to the next attempt
+    throw friendlyWebLLMError(e);
+  }
+
+  // engine.chat.completions.create() doesn't accept an abort signal and
+  // resolves (rather than rejecting) when interrupted, so cancellation
+  // is done by racing it against a promise that rejects on abort. A
+  // known web-llm bug means the engine returns empty content on every
+  // generation *after* interruptGenerate() is called -- so the cached
+  // engine is discarded on abort, forcing a fresh one next attempt
+  // instead of silently returning nothing.
+  const abortPromise = new Promise((_, reject) => {
+    if (!signal) return;
+    const onAbort = () => {
+      engine.interruptGenerate?.();
+      discardEngineCache();
+      reject(new DOMException("Extraction cancelled.", "AbortError"));
+    };
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  });
+
+  let reply;
+  try {
+    const generatePromise = engine.chat.completions.create({
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: transcript },
+      ],
+    });
+    reply = await Promise.race([generatePromise, abortPromise]);
+  } catch (e) {
+    if (e.name === "AbortError") throw e;
+    discardEngineCache(); // a broken generation likely means a broken engine instance
+    throw friendlyWebLLMError(e);
+  }
+
+  const raw = reply.choices?.[0]?.message?.content ?? "[]";
+  try {
+    return JSON.parse(raw.trim());
+  } catch {
+    throw new Error("The model didn't return usable output for this transcript. Try again, or try a larger WebLLM model.");
+  }
+}

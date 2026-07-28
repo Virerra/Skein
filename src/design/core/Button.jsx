@@ -1,29 +1,30 @@
 import React from "react";
+import { NeumorphicShadow } from "./neumorphism";
 
 export function Button({ variant = "primary", size = "md", disabled, children, onClick }) {
   const [pressed, setPressed] = React.useState(false);
   const pad = size === "sm" ? "6px 14px" : size === "lg" ? "13px 26px" : "10px 18px";
   const font = size === "sm" ? "var(--text-body-sm)" : "var(--text-body)";
-  const neumorphic = variant === "secondary" || variant === "ghost";
   const base = {
+    position: "relative",
     fontFamily: "var(--font-ui)",
     font,
     padding: pad,
-    borderRadius: "var(--radius-neu-sm)",
+    borderRadius: "var(--radius-md)",
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.45 : 1,
-    transition: `all var(--duration-fast) var(--ease-standard)`,
     border: "none",
+    transition: `transform var(--duration-fast) var(--ease-standard), filter var(--duration-fast) var(--ease-standard)`,
     display: "inline-flex",
     alignItems: "center",
     gap: "8px",
     transform: pressed && !disabled ? "scale(0.97)" : "scale(1)",
   };
   const variants = {
-    primary: { background: "var(--gradient-primary)", color: "var(--text-on-accent)", boxShadow: pressed ? "var(--shadow-neu-inset-sm)" : "var(--shadow-neu-raised-sm)" },
-    secondary: { background: "var(--surface-raised)", color: "var(--text-primary)", boxShadow: pressed ? "var(--shadow-neu-inset-sm)" : "var(--shadow-neu-raised-sm)" },
-    ghost: { background: "transparent", color: "var(--text-secondary)", boxShadow: pressed ? "var(--shadow-neu-inset-sm)" : "none" },
-    correction: { background: "var(--gradient-correction)", color: "var(--text-on-accent)", boxShadow: pressed ? "var(--shadow-neu-inset-sm)" : "var(--shadow-neu-raised-sm)" },
+    primary: { background: "var(--gradient-primary)", color: "var(--text-on-accent)" },
+    secondary: { background: "var(--surface-raised)", color: "var(--text-primary)" },
+    ghost: { background: "transparent", color: "var(--text-secondary)" },
+    correction: { background: "var(--gradient-correction)", color: "var(--text-on-accent)" },
   };
   return (
     <button
@@ -32,10 +33,11 @@ export function Button({ variant = "primary", size = "md", disabled, children, o
       onClick={onClick}
       onMouseDown={() => !disabled && setPressed(true)}
       onMouseUp={() => setPressed(false)}
-      onMouseLeave={(e) => { setPressed(false); if (!disabled && variant === "primary") e.currentTarget.style.filter = "none"; }}
-      onMouseEnter={(e) => { if (!disabled && variant === "primary") e.currentTarget.style.filter = "brightness(1.08)"; }}
+      onMouseLeave={(e) => { setPressed(false); if (!disabled) e.currentTarget.style.filter = "none"; }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.filter = "brightness(1.08)"; }}
     >
-      {children}
+      <NeumorphicShadow pressed={pressed} showRaised={variant !== "ghost"} radius="var(--radius-md)" />
+      <span style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: "8px" }}>{children}</span>
     </button>
   );
 }

@@ -4,6 +4,7 @@ const statusStyles = {
   active: { color: "var(--accent-primary)", border: "1px solid var(--accent-primary)" },
   superseded: { color: "var(--accent-superseded)", border: "1px dashed var(--accent-superseded)" },
   correction: { color: "var(--accent-correction)", border: "1px solid var(--accent-correction)" },
+  discarded: { color: "var(--text-muted)", border: "1px dashed var(--text-muted)" },
 };
 
 export function Badge({ status = "active", children }) {

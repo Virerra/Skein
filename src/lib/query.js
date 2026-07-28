@@ -6,7 +6,7 @@
 // similarity search once there's a reason to (i.e. once keyword
 // matching starts missing obvious matches in testing).
 
-import { getChain } from "./graphModel";
+import { getChain, buildClusters } from "./graphModel";
 
 function score(claim, queryWords) {
   const text = claim.text.toLowerCase();
@@ -30,7 +30,14 @@ export function runQuery(claims, queryText) {
   }
 
   const best = scored[0].claim;
-  const chain = getChain(claims, best.id);
+
+  // Anchor the chain on the topic's current head, not just whichever
+  // node in the chain happened to score highest on keyword overlap —
+  // otherwise a query that matches an older, superseded claim returns
+  // a truncated chain that never reaches the actual current answer.
+  const cluster = buildClusters(claims).find((cl) => cl.topic === best.topic);
+  const head = cluster?.head ?? best;
+  const chain = getChain(claims, head.id);
   const current = chain[chain.length - 1];
 
   return {
