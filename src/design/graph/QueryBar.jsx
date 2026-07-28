@@ -3,7 +3,7 @@ import React from "react";
 export function QueryBar({ value, onChange, result }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "var(--surface-raised)", borderRadius: "var(--radius-neu-sm)", padding: "12px 16px", fontFamily: "var(--font-mono)", fontSize: "13px", boxShadow: "var(--shadow-neu-inset)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "var(--surface-sunken)", border: "1px solid var(--border-default)", borderRadius: "var(--radius-md)", padding: "12px 16px", fontFamily: "var(--font-mono)", fontSize: "13px" }}>
         <span style={{ color: "var(--accent-primary)" }}>$</span>
         <span style={{ color: "var(--text-secondary)" }}>skein query</span>
         <input

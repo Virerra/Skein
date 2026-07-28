@@ -1,9 +1,13 @@
 // Extraction: turns a pasted transcript into a list of atomic claims.
 //
-// This is the BYOK path (user supplies their own Anthropic API key,
-// held only in memory for the session, never persisted). The WebLLM
-// in-browser path is a separate module to be added once the
-// COOP/COEP header question is resolved for GitHub Pages hosting.
+// Thin dispatcher over pluggable providers (src/lib/providers/) -- each
+// provider is responsible only for "transcript in, raw {text, topic}[]
+// out"; the claim-shaping tail below (id/timestamp/status) is shared so
+// every provider produces identical claim objects.
+
+import { extractWithAnthropic } from "./providers/anthropic";
+import { extractWithOpenAICompatible } from "./providers/openaiCompatible";
+import { extractWithWebLLM } from "./providers/webllm";
 
 const EXTRACTION_SYSTEM_PROMPT = `You extract atomic claims from a pasted AI chat transcript.
 
@@ -23,39 +27,38 @@ Rules:
 - Respond with ONLY a JSON array, no prose, no markdown fences. Each
   element: {"text": string, "topic": string}`;
 
-export async function extractClaims({ transcript, apiKey, sourceChat }) {
-  if (!apiKey) throw new Error("No API key provided.");
+export async function extractClaims({ transcript, sourceChat, settings, apiKey, signal }) {
   if (!transcript?.trim()) throw new Error("Transcript is empty.");
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 2000,
-      system: EXTRACTION_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: transcript }],
-    }),
-  });
-
-  if (!res.ok) {
-    const errBody = await res.text().catch(() => "");
-    throw new Error(`Extraction request failed (${res.status}): ${errBody}`);
-  }
-
-  const data = await res.json();
-  const raw = data.content?.find((b) => b.type === "text")?.text ?? "[]";
-
+  const provider = settings?.provider || "anthropic";
+  const model = settings?.model;
   let parsed;
+
   try {
-    parsed = JSON.parse(raw.trim());
-  } catch {
-    throw new Error("Model did not return valid JSON. Raw output: " + raw.slice(0, 300));
+    if (provider === "anthropic") {
+      parsed = await extractWithAnthropic({ transcript, systemPrompt: EXTRACTION_SYSTEM_PROMPT, apiKey, model, signal });
+    } else if (provider === "openai-compatible") {
+      parsed = await extractWithOpenAICompatible({
+        transcript,
+        systemPrompt: EXTRACTION_SYSTEM_PROMPT,
+        apiKey,
+        model,
+        baseUrl: settings?.baseUrl,
+        signal,
+      });
+    } else if (provider === "webllm") {
+      parsed = await extractWithWebLLM({ transcript, systemPrompt: EXTRACTION_SYSTEM_PROMPT, model, signal });
+    } else {
+      throw new Error(`Unknown provider: ${provider}`);
+    }
+  } catch (e) {
+    if (e.name === "AbortError") {
+      throw new Error("Extraction cancelled.");
+    }
+    if (e instanceof SyntaxError) {
+      throw new Error("Model did not return valid JSON.");
+    }
+    throw e;
   }
 
   const now = Date.now();
