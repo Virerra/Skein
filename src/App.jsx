@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { getAllClaims, putClaim, putClaims } from "./lib/db";
+import { getAllClaims, putClaim, putClaims, getAllRelations, putRelation, deleteRelation } from "./lib/db";
 import { extractClaims } from "./lib/extraction";
+import { categorizeClaims } from "./lib/categorize";
 import { applyNewClaims, buildClusters, getChain } from "./lib/graphModel";
 import { runQuery } from "./lib/query";
 import { loadSettings, saveSettings, applyTheme } from "./lib/settings";
@@ -19,6 +20,9 @@ import { assignTopicColors } from "./lib/topicColor";
 
 export default function App() {
   const [claims, setClaims] = useState([]);
+  const [relations, setRelations] = useState([]);
+  const [relateMode, setRelateMode] = useState(false);
+  const [categorizing, setCategorizing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [selectedTopics, setSelectedTopics] = useState(null); // null = all
@@ -34,7 +38,12 @@ export default function App() {
   const abortControllerRef = useRef(null);
 
   useEffect(() => {
-    getAllClaims().then(setClaims).catch((e) => setError(e.message));
+    Promise.all([getAllClaims(), getAllRelations()])
+      .then(([c, r]) => {
+        setClaims(c);
+        setRelations(r);
+      })
+      .catch((e) => setError(e.message));
   }, []);
 
   useEffect(() => {
@@ -145,6 +154,35 @@ export default function App() {
     }
   }
 
+  async function handleCategorize() {
+    if (activeClaims.length === 0) return;
+    setCategorizing(true);
+    setError(null);
+    try {
+      const updated = await categorizeClaims({ claims, settings, apiKey });
+      await putClaims(updated);
+      setClaims(updated);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setCategorizing(false);
+    }
+  }
+
+  async function handleCreateRelation(aId, bId) {
+    if (aId === bId) return;
+    const alreadyExists = relations.some((r) => (r.a === aId && r.b === bId) || (r.a === bId && r.b === aId));
+    if (alreadyExists) return;
+    const relation = { id: crypto.randomUUID(), a: aId, b: bId, createdAt: Date.now() };
+    await putRelation(relation);
+    setRelations((prev) => [...prev, relation]);
+  }
+
+  async function handleDeleteRelation(id) {
+    await deleteRelation(id);
+    setRelations((prev) => prev.filter((r) => r.id !== id));
+  }
+
   return (
     <div style={{ display: "grid", gridTemplateColumns: "260px 1fr 320px", height: "100vh", background: "var(--surface-base)" }}>
       <aside style={{ padding: "20px 16px", borderRight: "1px solid var(--border-default)", overflowY: "auto" }}>
@@ -176,8 +214,24 @@ export default function App() {
 
         {clusterFilterData.length > 0 && (
           <div style={{ marginTop: "20px" }}>
-            <div style={{ font: "var(--text-mono-sm)", color: "var(--text-muted)", marginBottom: "10px", textTransform: "uppercase" }}>
-              Clusters
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+              <div style={{ font: "var(--text-mono-sm)", color: "var(--text-muted)", textTransform: "uppercase" }}>
+                Clusters
+              </div>
+              <button
+                onClick={handleCategorize}
+                disabled={categorizing}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: categorizing ? "var(--text-muted)" : "var(--accent-primary)",
+                  font: "var(--text-mono-sm)",
+                  cursor: categorizing ? "default" : "pointer",
+                  padding: 0,
+                }}
+              >
+                {categorizing ? "Categorizing…" : "Categorize"}
+              </button>
             </div>
             <ClusterFilter
               clusters={clusterFilterData}
@@ -193,13 +247,27 @@ export default function App() {
       </aside>
 
       <main style={{ position: "relative", padding: "16px", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
+          <Button variant={relateMode ? "correction" : "ghost"} size="sm" onClick={() => setRelateMode((v) => !v)}>
+            {relateMode ? "Done connecting" : "Make relations"}
+          </Button>
+        </div>
         <div style={{ flex: 1, minHeight: 0 }}>
           {visibleClaims.length === 0 ? (
             <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-ui)", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
               no claims yet — paste a transcript to get started
             </div>
           ) : (
-            <GraphCanvas claims={visibleClaims} onSelectClaim={setSelectedClaimId} selectedId={selectedClaimId} topicColors={topicColors} />
+            <GraphCanvas
+              claims={visibleClaims}
+              onSelectClaim={setSelectedClaimId}
+              selectedId={selectedClaimId}
+              topicColors={topicColors}
+              relations={relations}
+              relateMode={relateMode}
+              onCreateRelation={handleCreateRelation}
+              onDeleteRelation={handleDeleteRelation}
+            />
           )}
         </div>
         <div style={{ marginTop: "12px" }}>

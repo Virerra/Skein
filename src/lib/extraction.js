@@ -5,9 +5,7 @@
 // out"; the claim-shaping tail below (id/timestamp/status) is shared so
 // every provider produces identical claim objects.
 
-import { extractWithAnthropic } from "./providers/anthropic";
-import { extractWithOpenAICompatible } from "./providers/openaiCompatible";
-import { extractWithWebLLM } from "./providers/webllm";
+import { runProvider } from "./providers/dispatch";
 
 const EXTRACTION_SYSTEM_PROMPT = `You extract atomic claims from a pasted AI chat transcript.
 
@@ -30,33 +28,7 @@ Rules:
 export async function extractClaims({ transcript, sourceChat, settings, apiKey, signal }) {
   if (!transcript?.trim()) throw new Error("Transcript is empty.");
 
-  const provider = settings?.provider || "anthropic";
-  const model = settings?.models?.[provider];
-  let parsed;
-
-  try {
-    if (provider === "anthropic") {
-      parsed = await extractWithAnthropic({ transcript, systemPrompt: EXTRACTION_SYSTEM_PROMPT, apiKey, model, signal });
-    } else if (provider === "openai-compatible") {
-      parsed = await extractWithOpenAICompatible({
-        transcript,
-        systemPrompt: EXTRACTION_SYSTEM_PROMPT,
-        apiKey,
-        model,
-        baseUrl: settings?.baseUrl,
-        signal,
-      });
-    } else if (provider === "webllm") {
-      parsed = await extractWithWebLLM({ transcript, systemPrompt: EXTRACTION_SYSTEM_PROMPT, model, signal });
-    } else {
-      throw new Error(`Unknown provider: ${provider}`);
-    }
-  } catch (e) {
-    if (e.name === "AbortError") {
-      throw new Error("Extraction cancelled.");
-    }
-    throw e;
-  }
+  const parsed = await runProvider({ content: transcript, systemPrompt: EXTRACTION_SYSTEM_PROMPT, settings, apiKey, signal });
 
   const now = Date.now();
   return parsed.map((c, i) => ({

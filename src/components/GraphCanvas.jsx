@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 
 const WIDTH = 800;
 const HEIGHT = 560;
+const MIN_SCALE = 0.4;
+const MAX_SCALE = 2.5;
 
 function hashSeed(str) {
   let h = 0;
@@ -19,10 +21,7 @@ function hashSeed(str) {
 // own spring: conflict detection only ever chains a claim against
 // another claim in the *same* topic (see applyNewClaims in
 // graphModel.js), so a correction and what it supersedes are always
-// already in the same topic-pair set below. Clustering by topic loses
-// no relationship, it just makes topic the primary visual structure
-// and demotes history to something read on the node (see Knot below)
-// instead of chased across the canvas.
+// already in the same topic-pair set below.
 function computeLayout(ids, topicGroups, seedPositions) {
   const positions = new Map();
   ids.forEach((id) => {
@@ -102,38 +101,41 @@ function computeLayout(ids, topicGroups, seedPositions) {
 }
 
 // Soft, blurred boundary behind each topic's nodes -- proximity plus
-// this halo is what communicates "these belong together" now, instead
-// of drawn connecting lines (which get messy fast: a 5-claim topic is
-// 10 lines as a complete graph). One halo per topic, not per pair.
+// this halo communicates "these belong together," instead of drawn
+// connecting lines (which get messy fast: a 5-claim topic is 10 lines
+// as a complete graph). One halo per topic, not per pair.
 function ClusterHalo({ cx, cy, r, color }) {
-  return <circle cx={cx} cy={cy} r={r} fill={color} opacity="0.09" filter="url(#skein-halo-blur)" />;
+  return <circle cx={cx} cy={cy} r={r} fill={color} opacity="0.09" filter="url(#skein-halo-blur)" style={{ pointerEvents: "none" }} />;
 }
 
-function Knot({ claim, pos, radius, selected, dragging, topicColor, onPointerDown, onClick }) {
+// A manually-declared relation between two claims, independent of
+// topic and status -- deliberately neutral-colored (not gold, not any
+// topic hue) so it reads as "someone drew this on purpose" rather than
+// being mistaken for a status or category signal. Wide invisible hit
+// stroke underneath the visible thin dashed line, so it's actually
+// clickable to delete without needing pixel-perfect precision.
+function RelationLine({ a, b, onDelete }) {
+  return (
+    <g style={{ cursor: "pointer" }} onPointerDown={(e) => e.stopPropagation()} onClick={onDelete}>
+      <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth="14" />
+      <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="var(--text-secondary)" strokeWidth="1.3" strokeDasharray="3 4" opacity="0.55" />
+    </g>
+  );
+}
+
+function Knot({ claim, pos, radius, selected, isRelateAnchor, dragging, topicColor, onPointerDown }) {
   const [hovered, setHovered] = React.useState(false);
   const color = claim.status === "superseded" ? "var(--color-slate)" : topicColor;
   const raised = claim.status !== "superseded";
-  // A claim that corrected an earlier one gets a faint stacked "card
-  // behind it" -- history shown on the node itself, in place of what
-  // used to be a line drawn back to its predecessor.
-  const hasHistory = !!claim.supersedes;
 
   return (
     <g
       transform={`translate(${pos.x},${pos.y})`}
       style={{ cursor: dragging ? "grabbing" : "grab", filter: hovered ? "brightness(1.15)" : "none", transition: "filter 150ms ease", userSelect: "none" }}
       onPointerDown={onPointerDown}
-      onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {hasHistory && (
-        <>
-          <circle cx={5} cy={5} r={radius} fill={color} opacity="0.28" />
-          <circle cx={2.5} cy={2.5} r={radius} fill={color} opacity="0.4" />
-        </>
-      )}
-
       {raised ? (
         <>
           <circle r={radius} fill={color} filter="url(#skein-shadow)" />
@@ -156,6 +158,9 @@ function Knot({ claim, pos, radius, selected, dragging, topicColor, onPointerDow
         opacity={selected ? 1 : 0}
         style={{ transition: "opacity 200ms ease" }}
       />
+      {isRelateAnchor && (
+        <circle r={radius + 8} fill="none" stroke="var(--text-primary)" strokeWidth="1.6" strokeDasharray="3 3" />
+      )}
       <text
         y={radius + 14}
         textAnchor="middle"
@@ -168,12 +173,28 @@ function Knot({ claim, pos, radius, selected, dragging, topicColor, onPointerDow
   );
 }
 
-export function GraphCanvas({ claims, onSelectClaim, selectedId, topicColors }) {
+export function GraphCanvas({
+  claims,
+  onSelectClaim,
+  selectedId,
+  topicColors,
+  relations = [],
+  relateMode = false,
+  onCreateRelation,
+  onDeleteRelation,
+}) {
   const svgRef = useRef(null);
   const positionsRef = useRef(new Map());
   const [, forceRender] = useState(0);
   const [draggingId, setDraggingId] = useState(null);
   const dragRef = useRef(null);
+  const [relateAnchor, setRelateAnchor] = useState(null);
+  const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
+  const panRef = useRef(null);
+
+  useEffect(() => {
+    if (!relateMode) setRelateAnchor(null);
+  }, [relateMode]);
 
   const topicGroups = useMemo(() => {
     const m = new Map();
@@ -185,8 +206,9 @@ export function GraphCanvas({ claims, onSelectClaim, selectedId, topicColors }) 
   }, [claims]);
 
   // Includes topic in the signature, not just id membership -- editing
-  // a claim's topic (recategorizing it from the Thread panel) needs to
-  // re-trigger clustering even though the set of ids hasn't changed.
+  // a claim's topic (recategorizing it, by hand or via Categorize)
+  // needs to re-trigger clustering even though the set of ids hasn't
+  // changed.
   const idsSignature = claims.map((c) => `${c.id}:${c.topic}`).sort().join(",");
 
   useEffect(() => {
@@ -197,7 +219,8 @@ export function GraphCanvas({ claims, onSelectClaim, selectedId, topicColors }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsSignature]);
 
-  function toSvgPoint(clientX, clientY) {
+  // Raw point in the fixed 0..WIDTH/0..HEIGHT viewBox space (before pan/zoom).
+  function toViewboxPoint(clientX, clientY) {
     const svg = svgRef.current;
     const rect = svg.getBoundingClientRect();
     return {
@@ -206,10 +229,69 @@ export function GraphCanvas({ claims, onSelectClaim, selectedId, topicColors }) 
     };
   }
 
+  // Point in world/model space -- where node positions actually live,
+  // independent of the current pan/zoom. Viewbox and world space are
+  // the same thing at view = {scale:1, x:0, y:0}; they diverge once
+  // the user pans or zooms.
+  function toWorldPoint(clientX, clientY) {
+    const vp = toViewboxPoint(clientX, clientY);
+    return { x: (vp.x - view.x) / view.scale, y: (vp.y - view.y) / view.scale };
+  }
+
+  function zoomToward(anchorViewboxPt, factor) {
+    setView((v) => {
+      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, v.scale * factor));
+      const ratio = newScale / v.scale;
+      return {
+        scale: newScale,
+        x: anchorViewboxPt.x - ratio * (anchorViewboxPt.x - v.x),
+        y: anchorViewboxPt.y - ratio * (anchorViewboxPt.y - v.y),
+      };
+    });
+  }
+
+  // Attached manually (not via onWheel) so preventDefault reliably
+  // stops the page from scrolling while zooming the graph -- React's
+  // synthetic wheel handler is passive by default in recent versions,
+  // which silently ignores preventDefault and left the page scrolling
+  // underneath the canvas.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    function handleWheel(e) {
+      e.preventDefault();
+      zoomToward(toViewboxPoint(e.clientX, e.clientY), e.deltaY < 0 ? 1.12 : 1 / 1.12);
+    }
+    svg.addEventListener("wheel", handleWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", handleWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function handleBackgroundPointerDown(e) {
+    panRef.current = { startClientX: e.clientX, startClientY: e.clientY, startViewX: view.x, startViewY: view.y };
+    window.addEventListener("pointermove", handleBackgroundPointerMove);
+    window.addEventListener("pointerup", handleBackgroundPointerUp);
+  }
+
+  function handleBackgroundPointerMove(e) {
+    const p = panRef.current;
+    if (!p) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const dx = (e.clientX - p.startClientX) * (WIDTH / rect.width);
+    const dy = (e.clientY - p.startClientY) * (HEIGHT / rect.height);
+    setView((v) => ({ ...v, x: p.startViewX + dx, y: p.startViewY + dy }));
+  }
+
+  function handleBackgroundPointerUp() {
+    panRef.current = null;
+    window.removeEventListener("pointermove", handleBackgroundPointerMove);
+    window.removeEventListener("pointerup", handleBackgroundPointerUp);
+  }
+
   function handlePointerDown(claimId, e) {
     e.stopPropagation();
     e.preventDefault();
-    dragRef.current = { id: claimId, moved: false, start: toSvgPoint(e.clientX, e.clientY) };
+    dragRef.current = { id: claimId, moved: false, start: toWorldPoint(e.clientX, e.clientY) };
     setDraggingId(claimId);
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
@@ -218,7 +300,7 @@ export function GraphCanvas({ claims, onSelectClaim, selectedId, topicColors }) 
   function handlePointerMove(e) {
     const drag = dragRef.current;
     if (!drag) return;
-    const p = toSvgPoint(e.clientX, e.clientY);
+    const p = toWorldPoint(e.clientX, e.clientY);
     if (Math.abs(p.x - drag.start.x) > 3 || Math.abs(p.y - drag.start.y) > 3) drag.moved = true;
     positionsRef.current.set(drag.id, { x: p.x, y: p.y });
     forceRender((n) => n + 1);
@@ -230,20 +312,39 @@ export function GraphCanvas({ claims, onSelectClaim, selectedId, topicColors }) 
     setDraggingId(null);
     window.removeEventListener("pointermove", handlePointerMove);
     window.removeEventListener("pointerup", handlePointerUp);
-    if (drag && !drag.moved) onSelectClaim(drag.id);
+    if (!drag || drag.moved) return;
+
+    if (relateMode) {
+      if (relateAnchor === null) {
+        setRelateAnchor(drag.id);
+      } else if (relateAnchor === drag.id) {
+        setRelateAnchor(null); // clicking the armed node again disarms it
+      } else {
+        onCreateRelation?.(relateAnchor, drag.id);
+        // anchor stays armed, so one node can be connected to several in a row
+      }
+    } else {
+      onSelectClaim(drag.id);
+    }
+  }
+
+  function zoomBy(factor) {
+    zoomToward({ x: WIDTH / 2, y: HEIGHT / 2 }, factor);
+  }
+
+  function resetView() {
+    setView({ scale: 1, x: 0, y: 0 });
   }
 
   return (
-    <div style={{ width: "100%", height: "100%", userSelect: "none" }}>
-      <svg ref={svgRef} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ width: "100%", height: "100%" }}>
+    <div style={{ width: "100%", height: "100%", userSelect: "none", position: "relative" }}>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        style={{ width: "100%", height: "100%", touchAction: "none", cursor: relateMode ? "crosshair" : "default" }}
+        onPointerDown={handleBackgroundPointerDown}
+      >
         <defs>
-          <filter id="skein-glow" x="-100%" y="-100%" width="300%" height="300%">
-            <feGaussianBlur stdDeviation="4" result="b" />
-            <feMerge>
-              <feMergeNode in="b" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
           <filter id="skein-halo-blur" x="-60%" y="-60%" width="220%" height="220%">
             <feGaussianBlur stdDeviation="18" />
           </filter>
@@ -265,33 +366,80 @@ export function GraphCanvas({ claims, onSelectClaim, selectedId, topicColors }) 
           </radialGradient>
         </defs>
 
-        {Array.from(topicGroups.entries()).map(([topic, ids]) => {
-          const pts = ids.map((id) => positionsRef.current.get(id)).filter(Boolean);
-          if (pts.length === 0) return null;
-          const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
-          const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
-          const r = pts.length === 1 ? 44 : Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy))) + 40;
-          return <ClusterHalo key={`halo-${topic}`} cx={cx} cy={cy} r={r} color={topicColors.get(topic)} />;
-        })}
+        <g transform={`translate(${view.x},${view.y}) scale(${view.scale})`}>
+          {Array.from(topicGroups.entries()).map(([topic, ids]) => {
+            const pts = ids.map((id) => positionsRef.current.get(id)).filter(Boolean);
+            if (pts.length === 0) return null;
+            const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+            const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+            const r = pts.length === 1 ? 44 : Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy))) + 40;
+            return <ClusterHalo key={`halo-${topic}`} cx={cx} cy={cy} r={r} color={topicColors.get(topic)} />;
+          })}
 
-        {claims.map((c) => {
-          const pos = positionsRef.current.get(c.id);
-          if (!pos) return null;
-          const radius = c.status === "correction" ? 13 : c.status === "superseded" ? 8 : 11;
-          return (
-            <Knot
-              key={c.id}
-              claim={c}
-              pos={pos}
-              radius={radius}
-              selected={selectedId === c.id}
-              dragging={draggingId === c.id}
-              topicColor={topicColors.get(c.topic)}
-              onPointerDown={(e) => handlePointerDown(c.id, e)}
-            />
-          );
-        })}
+          {relations.map((r) => {
+            const a = positionsRef.current.get(r.a);
+            const b = positionsRef.current.get(r.b);
+            if (!a || !b) return null;
+            return <RelationLine key={r.id} a={a} b={b} onDelete={() => onDeleteRelation?.(r.id)} />;
+          })}
+
+          {claims.map((c) => {
+            const pos = positionsRef.current.get(c.id);
+            if (!pos) return null;
+            const radius = c.status === "correction" ? 13 : c.status === "superseded" ? 8 : 11;
+            return (
+              <Knot
+                key={c.id}
+                claim={c}
+                pos={pos}
+                radius={radius}
+                selected={selectedId === c.id}
+                isRelateAnchor={relateAnchor === c.id}
+                dragging={draggingId === c.id}
+                topicColor={topicColors.get(c.topic)}
+                onPointerDown={(e) => handlePointerDown(c.id, e)}
+              />
+            );
+          })}
+        </g>
       </svg>
+
+      <div style={{ position: "absolute", bottom: "12px", right: "12px", display: "flex", flexDirection: "column", gap: "4px" }}>
+        <button onClick={() => zoomBy(1.25)} style={zoomButtonStyle} aria-label="Zoom in">+</button>
+        <button onClick={() => zoomBy(1 / 1.25)} style={zoomButtonStyle} aria-label="Zoom out">−</button>
+        <button onClick={resetView} style={{ ...zoomButtonStyle, fontSize: "12px" }} aria-label="Reset zoom">⟲</button>
+      </div>
+
+      {relateMode && (
+        <div style={hintBadgeStyle}>
+          {relateAnchor ? "Click another node to connect — or click the armed one again to cancel" : "Click a node to start connecting"}
+        </div>
+      )}
     </div>
   );
 }
+
+const zoomButtonStyle = {
+  width: "28px",
+  height: "28px",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--border-default)",
+  background: "var(--surface-raised)",
+  color: "var(--text-secondary)",
+  fontFamily: "var(--font-ui)",
+  fontSize: "15px",
+  lineHeight: 1,
+  cursor: "pointer",
+};
+
+const hintBadgeStyle = {
+  position: "absolute",
+  top: "12px",
+  left: "12px",
+  background: "var(--surface-raised)",
+  border: "1px solid var(--border-default)",
+  borderRadius: "var(--radius-md)",
+  padding: "6px 10px",
+  font: "var(--text-mono-sm)",
+  color: "var(--text-secondary)",
+};

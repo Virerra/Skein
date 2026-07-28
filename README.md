@@ -108,6 +108,35 @@ still renders in a chain's history (tagged `[DISCARDED]`) if it was a
 link in one. Deliberate: "nothing is ever deleted or overwritten" is
 the product's whole premise, so true destructive delete isn't offered.
 
+## Graph interactions
+
+- **Zoom/pan** — scroll to zoom (toward the cursor), drag empty canvas
+  space to pan, +/−/reset buttons bottom-right for discoverability.
+  Dragging a node still repositions it; that's unaffected.
+- **Categorize** (sidebar, next to the Clusters header) — sends every
+  active claim's text to the model and asks it to assign a consistent
+  topic label across the whole set, consolidating near-duplicates that
+  arose from claims being extracted from different transcripts in
+  isolation (`lib/categorize.js`). Naive first pass: one request, no
+  batching -- fine at personal-tool scale, would need chunking beyond
+  that.
+- **Make relations** (button above the graph) — arms a connect mode:
+  click a node, click another, and a manually-declared relation is
+  drawn between them, independent of topic or supersession. The first
+  node stays armed so you can connect it to several others in a row;
+  click it again to disarm. Click an existing relation line to delete
+  it. Stored in IndexedDB (`relations` store, `lib/db.js`) as `{a, b}`
+  pairs, rendered as thin dashed neutral-colored lines, deliberately
+  not gold/topic-colored, so a manual connection never reads as a
+  status or category signal.
+
+Earlier versions of the graph drew a literal edge from a claim to
+whatever it superseded. That's gone -- clustering is by topic now (see
+"Visual identity" below), and correction history moved onto the node
+itself (bronze ring, slightly larger radius) rather than a line back to
+a predecessor. Nothing about supersession chains changed underneath;
+`ThreadPanel` still shows the full chain when you click a claim.
+
 ## What's naive on purpose
 
 - **Conflict detection** (`graphModel.js`) is same-topic-label,
@@ -116,9 +145,8 @@ the product's whole premise, so true destructive delete isn't offered.
   scoring + an LLM judgment call once this starts mattering.
 - **Retrieval** (`query.js`) is keyword overlap, not embeddings. Fine
   for proving the "walk the chain" UX, not real RAG yet.
-- **WebLLM** is scaffolded and feature-detected but unverified on a
-  real GitHub Pages deploy — see "Model providers" above. BYOK and
-  local-model-via-custom-endpoint are the two paths that work today.
+- **Categorize** (above) is one request for the whole claim set, no
+  chunking yet.
 
 ## Deploying
 
