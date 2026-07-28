@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 
 // AI chat exports often carry markdown emphasis (***x***, **x**, *x*,
 // [text](url)) that reads as clutter once pasted into a plain textarea
@@ -17,8 +17,19 @@ function markdownToHtml(text) {
   return html;
 }
 
-export function TranscriptEditor({ onChange, placeholder }) {
+export function TranscriptEditor({ onChange, placeholder, initialValue }) {
   const ref = useRef(null);
+
+  useEffect(() => {
+    if (ref.current && initialValue) {
+      ref.current.innerText = initialValue;
+    }
+    // Runs once per mount only -- the parent forces a remount (via a
+    // `key` change) whenever a different draft is loaded. Re-syncing
+    // on every initialValue change instead would overwrite the user's
+    // cursor position mid-keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handlePaste(e) {
     e.preventDefault();

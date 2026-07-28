@@ -10,13 +10,17 @@ import { parseClaimsResponse } from "./parseClaimsResponse";
 
 // Curated starting point for the Settings dropdown -- small, fast,
 // instruction-tuned models that are reasonable to run in a browser.
-// The full list (163+ models as of writing) is available via
-// listWebLLMModels() below for anyone who wants something specific.
+// Deliberately q4f32_1, not q4f16_1: f16 quantization needs the
+// browser's `shader-f16` WebGPU extension, which many Chrome installs
+// don't have enabled -- f32 works on more hardware at the cost of
+// roughly double the download/memory footprint. The full list (163+
+// models as of writing, including the f16 variants) is available via
+// listWebLLMModels() below for anyone who wants to try one.
 export const RECOMMENDED_WEBLLM_MODELS = [
-  "Llama-3.2-1B-Instruct-q4f16_1-MLC",
-  "Llama-3.2-3B-Instruct-q4f16_1-MLC",
-  "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
-  "Phi-3.5-mini-instruct-q4f16_1-MLC",
+  "Llama-3.2-1B-Instruct-q4f32_1-MLC",
+  "Llama-3.2-3B-Instruct-q4f32_1-MLC",
+  "Qwen2.5-1.5B-Instruct-q4f32_1-MLC",
+  "Phi-3.5-mini-instruct-q4f32_1-MLC",
 ];
 
 // Pulled live from the installed package's own config rather than
@@ -54,11 +58,16 @@ export function checkWebLLMSupport() {
 function friendlyWebLLMError(e) {
   const msg = e?.message || String(e);
 
+  if (/shader-f16|requires webgpu extension|not yet supported by this browser/i.test(msg)) {
+    return new Error(
+      "This model needs a WebGPU feature (shader-f16) your browser doesn't have enabled. Pick a model without \"f16\" in its name from Settings instead (the Recommended list uses f32 variants for this reason) -- or, if you specifically want an f16 model, some Chrome builds support it behind the --enable-dawn-features=allow_unsafe_apis launch flag."
+    );
+  }
   if (/out of memory|oom/i.test(msg)) {
     return new Error("This model needs more GPU memory than your device has available. Try a smaller WebLLM model in Settings.");
   }
   if (/shadermodule|compute stage|pipeline|validating|adapter|device was lost/i.test(msg)) {
-    return new Error("This model failed to run on your GPU (a WebGPU compilation error). Try a different WebLLM model in Settings, or switch to a BYOK/local-model provider instead.");
+    return new Error("This model failed to run on your GPU (a WebGPU compilation error). Try a different WebLLM model in Settings (an f32 one, if you were on an f16 model), or switch to a BYOK/local-model provider instead.");
   }
   if (/\.wasm|\.bin\b|download/i.test(msg)) {
     return new Error("The model failed to download completely. Check your connection and try again.");

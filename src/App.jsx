@@ -102,8 +102,10 @@ export default function App() {
       await putClaims(merged);
       setClaims(merged);
       setIngestOpen(false);
+      return true;
     } catch (e) {
       setError(e.message);
+      return false;
     } finally {
       setBusy(false);
       abortControllerRef.current = null;
@@ -164,10 +166,7 @@ export default function App() {
           </button>
         </div>
 
-        <Button variant="secondary" onClick={() => setIngestOpen(true)}>Add transcript</Button>
-        {error && (
-          <div style={{ marginTop: "10px", color: "#c97b6b", fontSize: "12px", fontFamily: "var(--font-mono)" }}>{error}</div>
-        )}
+        <Button variant="secondary" onClick={() => { setError(null); setIngestOpen(true); }}>Add transcript</Button>
 
         {clusterFilterData.length > 0 && (
           <div style={{ marginTop: "20px" }}>
@@ -219,7 +218,7 @@ export default function App() {
         }}
         title="Add chat transcript"
       >
-        <IngestPanel onExtract={handleExtract} onCancel={handleCancelExtract} busy={busy} />
+        <IngestPanel onExtract={handleExtract} onCancel={handleCancelExtract} busy={busy} error={error} />
       </Modal>
 
       <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} title="Settings">
