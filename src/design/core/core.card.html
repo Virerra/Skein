@@ -1,0 +1,31 @@
+<!-- @dsCard group="Components" viewport="700x260" name="Core" subtitle="Button, Input, Badge, Card" -->
+<link rel="stylesheet" href="../../styles.css">
+<div id="root" style="background:#353535;padding:20px"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+const { Button, Input, Badge, Card } = window.SkeinDesignSystem_8e5175;
+function Demo(){
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:"16px",fontFamily:"var(--font-ui)"}}>
+      <div style={{display:"flex",gap:"10px"}}>
+        <Button variant="primary">Ingest transcript</Button>
+        <Button variant="secondary">Cancel</Button>
+        <Button variant="ghost">Skip</Button>
+        <Button variant="correction">Supersede</Button>
+        <Button variant="primary" disabled>Disabled</Button>
+      </div>
+      <div style={{display:"flex",gap:"10px"}}>
+        <Badge status="active">ACTIVE</Badge>
+        <Badge status="superseded">SUPERSEDED</Badge>
+        <Badge status="correction">CORRECTION · CURRENT</Badge>
+      </div>
+      <Input mono prompt="$" placeholder='query "why postgres?"' />
+      <Card><div style={{color:"var(--text-primary)",font:"var(--text-heading)",fontFamily:"var(--font-ui)"}}>Cluster: database choice</div><div style={{color:"var(--text-muted)",fontFamily:"var(--font-mono)",fontSize:"12px",marginTop:"6px"}}>3 claims · last updated 6:02pm</div></Card>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+</script>
