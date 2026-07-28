@@ -8,6 +8,7 @@ import { loadSettings, saveSettings, applyTheme } from "./lib/settings";
 import { GraphCanvas } from "./components/GraphCanvas";
 import { Wordmark } from "./components/Wordmark";
 import { IngestPanel } from "./components/IngestPanel";
+import { DraftsModal } from "./components/DraftsModal";
 import { ThreadPanel } from "./components/ThreadPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ClusterFilter } from "./design/graph/ClusterFilter";
@@ -25,6 +26,8 @@ export default function App() {
   const [queryText, setQueryText] = useState("");
   const [queryResult, setQueryResult] = useState(null);
   const [ingestOpen, setIngestOpen] = useState(false);
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [pendingDraftId, setPendingDraftId] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState(loadSettings);
   const [apiKey, setApiKey] = useState("");
@@ -166,7 +169,10 @@ export default function App() {
           </button>
         </div>
 
-        <Button variant="secondary" onClick={() => { setError(null); setIngestOpen(true); }}>Add transcript</Button>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <Button variant="secondary" onClick={() => { setError(null); setPendingDraftId(null); setIngestOpen(true); }}>Add transcript</Button>
+          <Button variant="ghost" onClick={() => setDraftsOpen(true)}>Drafts</Button>
+        </div>
 
         {clusterFilterData.length > 0 && (
           <div style={{ marginTop: "20px" }}>
@@ -218,8 +224,19 @@ export default function App() {
         }}
         title="Add chat transcript"
       >
-        <IngestPanel onExtract={handleExtract} onCancel={handleCancelExtract} busy={busy} error={error} />
+        <IngestPanel onExtract={handleExtract} onCancel={handleCancelExtract} busy={busy} error={error} initialDraftId={pendingDraftId} />
       </Modal>
+
+      <DraftsModal
+        open={draftsOpen}
+        onClose={() => setDraftsOpen(false)}
+        onOpenDraft={(id) => {
+          setDraftsOpen(false);
+          setError(null);
+          setPendingDraftId(id);
+          setIngestOpen(true);
+        }}
+      />
 
       <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} title="Settings">
         <SettingsPanel settings={settings} onSettingsChange={handleSettingsChange} apiKey={apiKey} onApiKeyChange={setApiKey} />

@@ -3,7 +3,7 @@ import { Button } from "../design/core/Button";
 import { TranscriptEditor } from "./TranscriptEditor";
 import { getDrafts, saveDraft, deleteDraft } from "../lib/drafts";
 
-export function IngestPanel({ onExtract, onCancel, busy, error }) {
+export function IngestPanel({ onExtract, onCancel, busy, error, initialDraftId }) {
   const [drafts, setDrafts] = useState(() => getDrafts());
   const [draftId, setDraftId] = useState(null);
   const [sourceChat, setSourceChat] = useState("");
@@ -17,6 +17,18 @@ export function IngestPanel({ onExtract, onCancel, busy, error }) {
   // contentEditable node) and kick focus out right after someone
   // pastes a large transcript.
   const [editorKey, setEditorKey] = useState(0);
+
+  // Runs once on mount only -- this component remounts fresh every time
+  // the ingest Modal opens (Modal unmounts children on close), so this
+  // is exactly "load the draft the user clicked in the Drafts list, if
+  // that's how we got here." loadDraft is a hoisted function
+  // declaration, safe to reference before its textual definition below.
+  useEffect(() => {
+    if (!initialDraftId) return;
+    const match = drafts.find((d) => d.id === initialDraftId);
+    if (match) loadDraft(match);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Debounced auto-save -- nothing typed here is lost to a failed
   // extraction, a closed modal, or a reloaded page. A draft is created

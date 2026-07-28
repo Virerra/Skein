@@ -73,14 +73,22 @@ Only the non-secret choice of provider/model/base-URL/theme persists.
 The graph (`src/components/GraphCanvas.jsx`) is a hand-rolled
 force-directed layout and SVG renderer, not Cytoscape (removed —
 it's what dropped the production bundle from ~640KB to ~210KB).
-Claims render as knots, colored by topic (a small warm-neutral
-palette in `src/lib/topicColor.js`, collision-checked so two
-different topics never land on the same hue, with a separate deeper
-palette for light mode so contrast holds up) and shaped by status:
-alive claims sit raised with a soft molded shadow and a gentle glow;
-superseded ones sink flush and flat. Supersession edges leading into
-the current claim glow solid gold; edges between dead ancestors are a
-plain thin line. Neumorphism is scoped to the graph's knots, buttons,
+Claims cluster spatially by **topic**, not by supersession: every pair
+of same-topic claims gets a mild attractive spring in the physics
+sim, and each topic renders a soft blurred halo (tinted with that
+topic's color) behind its nodes. There's no drawn line for
+supersession — conflict detection only ever chains a claim against
+another claim in the *same* topic (see `applyNewClaims` in
+`graphModel.js`), so a correction and what it supersedes are always
+already pulled into the same cluster; a dedicated edge would have been
+redundant, and a literal edge per same-topic pair doesn't scale (a
+5-claim topic is 10 lines as a complete graph). History is read on the
+node instead: a claim that corrected an earlier one renders with a
+faint stacked "card behind it," on top of the existing per-status
+treatment — alive claims sit raised with a soft molded shadow and a
+gentle glow; superseded ones sink flush and flat, smaller, and drop
+out of the topic's spring cluster's visual weight (though they stay in
+the same halo). Neumorphism is scoped to the graph's knots, buttons,
 and cluster-filter rows (raised at rest / pressed-in when active) —
 everything else (cards, inputs, panels) stays flat.
 

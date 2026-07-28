@@ -12,12 +12,18 @@ function hashSeed(str) {
   return Math.abs(h);
 }
 
-// Simple force-directed layout: repulsion between every pair of nodes,
-// spring attraction along supersession edges, gentle pull toward center.
-// Recomputed once per data change and reused as the seed on top-ups --
-// this is a personal graph (tens to low hundreds of claims), not a
-// scale that needs an incremental physics engine.
-function computeLayout(ids, edges, seedPositions) {
+// Force-directed layout: repulsion between every pair of nodes, gentle
+// pull toward center, and an attractive spring between every pair of
+// nodes that share a topic -- this is what clusters the graph by
+// category instead of by supersession. Supersession never needed its
+// own spring: conflict detection only ever chains a claim against
+// another claim in the *same* topic (see applyNewClaims in
+// graphModel.js), so a correction and what it supersedes are always
+// already in the same topic-pair set below. Clustering by topic loses
+// no relationship, it just makes topic the primary visual structure
+// and demotes history to something read on the node (see Knot below)
+// instead of chased across the canvas.
+function computeLayout(ids, topicGroups, seedPositions) {
   const positions = new Map();
   ids.forEach((id) => {
     const seed = seedPositions.get(id);
@@ -30,6 +36,15 @@ function computeLayout(ids, edges, seedPositions) {
         x: WIDTH / 2 + Math.cos(angle) * radius,
         y: HEIGHT / 2 + Math.sin(angle) * radius,
       });
+    }
+  });
+
+  const topicPairs = [];
+  topicGroups.forEach((groupIds) => {
+    for (let i = 0; i < groupIds.length; i++) {
+      for (let j = i + 1; j < groupIds.length; j++) {
+        topicPairs.push([groupIds[i], groupIds[j]]);
+      }
     }
   });
 
@@ -56,15 +71,15 @@ function computeLayout(ids, edges, seedPositions) {
       }
     }
 
-    edges.forEach(({ source, target }) => {
+    topicPairs.forEach(([source, target]) => {
       const a = positions.get(source);
       const b = positions.get(target);
       if (!a || !b) return;
       let dx = b.x - a.x;
       let dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-      const targetDist = 120;
-      const force = (dist - targetDist) * 0.02;
+      const targetDist = 85;
+      const force = (dist - targetDist) * 0.012;
       dx /= dist;
       dy /= dist;
       forces.get(source).x += dx * force;
@@ -86,18 +101,22 @@ function computeLayout(ids, edges, seedPositions) {
   return positions;
 }
 
-function DeadEdge({ a, b }) {
-  return <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="var(--color-slate)" strokeWidth="1.4" opacity="0.6" />;
-}
-
-function LiveEdge({ a, b }) {
-  return <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="var(--color-gold)" strokeWidth="1.8" opacity="0.9" filter="url(#skein-glow)" />;
+// Soft, blurred boundary behind each topic's nodes -- proximity plus
+// this halo is what communicates "these belong together" now, instead
+// of drawn connecting lines (which get messy fast: a 5-claim topic is
+// 10 lines as a complete graph). One halo per topic, not per pair.
+function ClusterHalo({ cx, cy, r, color }) {
+  return <circle cx={cx} cy={cy} r={r} fill={color} opacity="0.09" filter="url(#skein-halo-blur)" />;
 }
 
 function Knot({ claim, pos, radius, selected, dragging, topicColor, onPointerDown, onClick }) {
   const [hovered, setHovered] = React.useState(false);
   const color = claim.status === "superseded" ? "var(--color-slate)" : topicColor;
   const raised = claim.status !== "superseded";
+  // A claim that corrected an earlier one gets a faint stacked "card
+  // behind it" -- history shown on the node itself, in place of what
+  // used to be a line drawn back to its predecessor.
+  const hasHistory = !!claim.supersedes;
 
   return (
     <g
@@ -108,6 +127,13 @@ function Knot({ claim, pos, radius, selected, dragging, topicColor, onPointerDow
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      {hasHistory && (
+        <>
+          <circle cx={5} cy={5} r={radius} fill={color} opacity="0.28" />
+          <circle cx={2.5} cy={2.5} r={radius} fill={color} opacity="0.4" />
+        </>
+      )}
+
       {raised ? (
         <>
           <circle r={radius} fill={color} filter="url(#skein-shadow)" />
@@ -149,28 +175,23 @@ export function GraphCanvas({ claims, onSelectClaim, selectedId, topicColors }) 
   const [draggingId, setDraggingId] = useState(null);
   const dragRef = useRef(null);
 
-  const edges = useMemo(
-    () =>
-      claims
-        .filter((c) => c.supersedes)
-        .map((c) => ({ source: c.supersedes, target: c.id })),
-    [claims]
-  );
-
-  const degree = useMemo(() => {
-    const d = new Map();
-    edges.forEach(({ source, target }) => {
-      d.set(source, (d.get(source) || 0) + 1);
-      d.set(target, (d.get(target) || 0) + 1);
+  const topicGroups = useMemo(() => {
+    const m = new Map();
+    claims.forEach((c) => {
+      if (!m.has(c.topic)) m.set(c.topic, []);
+      m.get(c.topic).push(c.id);
     });
-    return d;
-  }, [edges]);
+    return m;
+  }, [claims]);
 
-  const idsSignature = claims.map((c) => c.id).sort().join(",");
+  // Includes topic in the signature, not just id membership -- editing
+  // a claim's topic (recategorizing it from the Thread panel) needs to
+  // re-trigger clustering even though the set of ids hasn't changed.
+  const idsSignature = claims.map((c) => `${c.id}:${c.topic}`).sort().join(",");
 
   useEffect(() => {
     const ids = claims.map((c) => c.id);
-    const positions = computeLayout(ids, edges, positionsRef.current);
+    const positions = computeLayout(ids, topicGroups, positionsRef.current);
     positionsRef.current = positions;
     forceRender((n) => n + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -212,8 +233,6 @@ export function GraphCanvas({ claims, onSelectClaim, selectedId, topicColors }) 
     if (drag && !drag.moved) onSelectClaim(drag.id);
   }
 
-  const byId = useMemo(() => new Map(claims.map((c) => [c.id, c])), [claims]);
-
   return (
     <div style={{ width: "100%", height: "100%", userSelect: "none" }}>
       <svg ref={svgRef} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ width: "100%", height: "100%" }}>
@@ -224,6 +243,9 @@ export function GraphCanvas({ claims, onSelectClaim, selectedId, topicColors }) 
               <feMergeNode in="b" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
+          </filter>
+          <filter id="skein-halo-blur" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="18" />
           </filter>
           <filter id="skein-shadow" x="-80%" y="-80%" width="260%" height="260%">
             <feDropShadow dx="2.5" dy="3.5" stdDeviation="2.2" floodColor="#000" floodOpacity="0.45" />
@@ -243,23 +265,19 @@ export function GraphCanvas({ claims, onSelectClaim, selectedId, topicColors }) 
           </radialGradient>
         </defs>
 
-        {edges.map(({ source, target }) => {
-          const a = positionsRef.current.get(source);
-          const b = positionsRef.current.get(target);
-          if (!a || !b) return null;
-          const targetClaim = byId.get(target);
-          const isLive = targetClaim && targetClaim.status !== "superseded";
-          return isLive ? (
-            <LiveEdge key={`${source}->${target}`} a={a} b={b} />
-          ) : (
-            <DeadEdge key={`${source}->${target}`} a={a} b={b} />
-          );
+        {Array.from(topicGroups.entries()).map(([topic, ids]) => {
+          const pts = ids.map((id) => positionsRef.current.get(id)).filter(Boolean);
+          if (pts.length === 0) return null;
+          const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+          const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+          const r = pts.length === 1 ? 44 : Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy))) + 40;
+          return <ClusterHalo key={`halo-${topic}`} cx={cx} cy={cy} r={r} color={topicColors.get(topic)} />;
         })}
 
         {claims.map((c) => {
           const pos = positionsRef.current.get(c.id);
           if (!pos) return null;
-          const radius = 9 + Math.min(degree.get(c.id) || 0, 4) * 2.5;
+          const radius = c.status === "correction" ? 13 : c.status === "superseded" ? 8 : 11;
           return (
             <Knot
               key={c.id}
