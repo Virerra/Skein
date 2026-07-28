@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getAllClaims, putClaim, putClaims, getAllRelations, putRelation, deleteRelation } from "./lib/db";
 import { extractClaims } from "./lib/extraction";
 import { categorizeClaims } from "./lib/categorize";
+import { suggestRelations } from "./lib/relate";
 import { applyNewClaims, buildClusters, getChain } from "./lib/graphModel";
 import { runQuery } from "./lib/query";
 import { loadSettings, saveSettings, applyTheme } from "./lib/settings";
@@ -23,6 +24,7 @@ export default function App() {
   const [relations, setRelations] = useState([]);
   const [relateMode, setRelateMode] = useState(false);
   const [categorizing, setCategorizing] = useState(false);
+  const [suggestingRelations, setSuggestingRelations] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [selectedTopics, setSelectedTopics] = useState(null); // null = all
@@ -169,10 +171,14 @@ export default function App() {
     }
   }
 
+  function relationKey(aId, bId) {
+    return [aId, bId].sort().join("::");
+  }
+
   async function handleCreateRelation(aId, bId) {
     if (aId === bId) return;
-    const alreadyExists = relations.some((r) => (r.a === aId && r.b === bId) || (r.a === bId && r.b === aId));
-    if (alreadyExists) return;
+    const key = relationKey(aId, bId);
+    if (relations.some((r) => relationKey(r.a, r.b) === key)) return;
     const relation = { id: crypto.randomUUID(), a: aId, b: bId, createdAt: Date.now() };
     await putRelation(relation);
     setRelations((prev) => [...prev, relation]);
@@ -181,6 +187,36 @@ export default function App() {
   async function handleDeleteRelation(id) {
     await deleteRelation(id);
     setRelations((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  // Separate from handleCreateRelation, not a loop calling it -- that
+  // would dedupe against stale state on every iteration (setRelations
+  // hasn't committed yet mid-loop), letting the model's own duplicate
+  // or mirrored (a,b) vs (b,a) suggestions slip past the check. This
+  // builds one dedup set up front and writes the whole batch at once.
+  async function handleSuggestRelations() {
+    if (activeClaims.length < 2) return;
+    setSuggestingRelations(true);
+    setError(null);
+    try {
+      const pairs = await suggestRelations({ claims: activeClaims, settings, apiKey });
+      const seen = new Set(relations.map((r) => relationKey(r.a, r.b)));
+      const fresh = [];
+      for (const { a, b } of pairs) {
+        const key = relationKey(a, b);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        fresh.push({ id: crypto.randomUUID(), a, b, createdAt: Date.now() });
+      }
+      if (fresh.length > 0) {
+        await Promise.all(fresh.map(putRelation));
+        setRelations((prev) => [...prev, ...fresh]);
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSuggestingRelations(false);
+    }
   }
 
   return (
@@ -247,7 +283,10 @@ export default function App() {
       </aside>
 
       <main style={{ position: "relative", padding: "16px", display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginBottom: "8px" }}>
+          <Button variant="ghost" size="sm" onClick={handleSuggestRelations} disabled={suggestingRelations}>
+            {suggestingRelations ? "Finding connections…" : "Suggest relations"}
+          </Button>
           <Button variant={relateMode ? "correction" : "ghost"} size="sm" onClick={() => setRelateMode((v) => !v)}>
             {relateMode ? "Done connecting" : "Make relations"}
           </Button>

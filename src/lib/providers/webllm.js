@@ -129,6 +129,7 @@ export async function extractWithWebLLM({ transcript, systemPrompt, model, signa
   let reply;
   try {
     const generatePromise = engine.chat.completions.create({
+      max_tokens: 4096,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: transcript },

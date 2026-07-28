@@ -119,16 +119,35 @@ the product's whole premise, so true destructive delete isn't offered.
   arose from claims being extracted from different transcripts in
   isolation (`lib/categorize.js`). Naive first pass: one request, no
   batching -- fine at personal-tool scale, would need chunking beyond
-  that.
-- **Make relations** (button above the graph) — arms a connect mode:
-  click a node, click another, and a manually-declared relation is
-  drawn between them, independent of topic or supersession. The first
-  node stays armed so you can connect it to several others in a row;
-  click it again to disarm. Click an existing relation line to delete
-  it. Stored in IndexedDB (`relations` store, `lib/db.js`) as `{a, b}`
-  pairs, rendered as thin dashed neutral-colored lines, deliberately
-  not gold/topic-colored, so a manual connection never reads as a
-  status or category signal.
+  that. Reliability on WebLLM's small on-device models is meaningfully
+  worse than on BYOK: extraction only has to read one transcript at a
+  time, but categorize has to hold every claim in mind at once and stay
+  consistent across the whole output, a much heavier ask for a 1-3B
+  parameter model. `max_tokens` is set explicitly now (was previously
+  unset and could truncate a response whose length scales with claim
+  count), but that fixes a truncation *bug*, not the underlying
+  capability gap -- if categorize keeps struggling on WebLLM, switching
+  providers in Settings just for that action is the practical answer,
+  not a prompt tweak.
+- **Suggest relations** (button above the graph, next to Make
+  relations) — the AI counterpart to manual connecting: sends every
+  active claim to the model and asks specifically for connections that
+  cross topic boundaries (same-topic relatedness is already what the
+  halo shows, so that's excluded both by prompt and by a client-side
+  filter as a backstop). Conservative by design -- the prompt asks for
+  only clear connections, not exhaustive pairwise correlation, since
+  suggestions are additive to the graph and easier to want more of than
+  to clean up (`lib/relate.js`).
+- **Make relations** (button above the graph) — the manual counterpart:
+  arms a connect mode, click a node, click another, and a
+  manually-declared relation is drawn between them, independent of
+  topic or supersession. The first node stays armed so you can connect
+  it to several others in a row; click it again to disarm. Click an
+  existing relation line to delete it. Both paths write to the same
+  store (IndexedDB `relations`, `lib/db.js`) as `{a, b}` pairs, rendered
+  as thin dashed neutral-colored lines, deliberately not gold or
+  topic-colored, so a connection never reads as a status or category
+  signal.
 
 Earlier versions of the graph drew a literal edge from a claim to
 whatever it superseded. That's gone -- clustering is by topic now (see
