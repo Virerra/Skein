@@ -6,6 +6,8 @@
 // package itself is dynamically imported so it never lands in the
 // bundle for users who don't select this provider.
 
+import { parseClaimsResponse } from "./parseClaimsResponse";
+
 export function checkWebLLMSupport() {
   const hasWebGPU = typeof navigator !== "undefined" && !!navigator.gpu;
   const isolated = typeof window !== "undefined" && window.crossOriginIsolated === true;
@@ -111,8 +113,8 @@ export async function extractWithWebLLM({ transcript, systemPrompt, model, signa
 
   const raw = reply.choices?.[0]?.message?.content ?? "[]";
   try {
-    return JSON.parse(raw.trim());
-  } catch {
-    throw new Error("The model didn't return usable output for this transcript. Try again, or try a larger WebLLM model.");
+    return parseClaimsResponse(raw);
+  } catch (e) {
+    throw new Error("The model didn't return usable output for this transcript. Try again, or try a larger WebLLM model. " + e.message);
   }
 }

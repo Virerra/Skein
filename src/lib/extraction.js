@@ -55,9 +55,6 @@ export async function extractClaims({ transcript, sourceChat, settings, apiKey, 
     if (e.name === "AbortError") {
       throw new Error("Extraction cancelled.");
     }
-    if (e instanceof SyntaxError) {
-      throw new Error("Model did not return valid JSON.");
-    }
     throw e;
   }
 

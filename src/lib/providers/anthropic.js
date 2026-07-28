@@ -2,6 +2,8 @@
 // ({text, topic}[]) -- extraction.js handles turning that into full
 // claim objects (id/timestamp/status), shared across every provider.
 
+import { parseClaimsResponse } from "./parseClaimsResponse";
+
 export async function extractWithAnthropic({ transcript, systemPrompt, apiKey, model, signal }) {
   if (!apiKey) throw new Error("No Anthropic API key provided.");
 
@@ -15,7 +17,7 @@ export async function extractWithAnthropic({ transcript, systemPrompt, apiKey, m
     },
     body: JSON.stringify({
       model: model || "claude-haiku-4-5-20251001",
-      max_tokens: 2000,
+      max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: "user", content: transcript }],
     }),
@@ -29,5 +31,5 @@ export async function extractWithAnthropic({ transcript, systemPrompt, apiKey, m
 
   const data = await res.json();
   const raw = data.content?.find((b) => b.type === "text")?.text ?? "[]";
-  return JSON.parse(raw.trim());
+  return parseClaimsResponse(raw);
 }

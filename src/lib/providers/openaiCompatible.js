@@ -4,6 +4,8 @@
 // model" is just this same adapter pointed at a custom base URL with no
 // or an optional key, not a separate code path.
 
+import { parseClaimsResponse } from "./parseClaimsResponse";
+
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 
 export async function extractWithOpenAICompatible({ transcript, systemPrompt, apiKey, model, baseUrl, signal }) {
@@ -32,5 +34,5 @@ export async function extractWithOpenAICompatible({ transcript, systemPrompt, ap
 
   const data = await res.json();
   const raw = data.choices?.[0]?.message?.content ?? "[]";
-  return JSON.parse(raw.trim());
+  return parseClaimsResponse(raw);
 }
