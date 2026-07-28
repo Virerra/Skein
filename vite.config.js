@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   // GitHub Pages project sites are served from /<repo-name>/, not the
-  // domain root. Update this to match whatever you name the repo, or
-  // set it to '/' if this ends up on a custom domain / user root page.
-  base: '/skein/',
+  // domain root, and the path is case-sensitive. Matches the actual
+  // repo at github.com/Virerra/Skein.
+  base: '/Skein/',
 })

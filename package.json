@@ -1,7 +1,22 @@
 {
   "name": "skein-app",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "A personal knowledge graph that merges scattered AI chat history into a contradiction-aware graph of atomic claims, used as the retrieval layer for RAG instead of raw transcripts.",
+  "license": "MIT",
+  "author": "Virerra",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Virerra/Skein.git"
+  },
+  "homepage": "https://virerra.github.io/Skein/",
+  "keywords": [
+    "knowledge-graph",
+    "rag",
+    "llm",
+    "react",
+    "webllm"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -114,8 +114,13 @@ the product's whole premise, so true destructive delete isn't offered.
 
 ## Deploying
 
-`vite.config.js` sets `base: '/skein/'` for a GitHub Pages project
-site — update it if you name the repo something else. A GitHub Actions
-workflow (`.github/workflows/deploy.yml`) builds and deploys `dist/`
-to Pages on every push to `main`; enable Pages → GitHub Actions as the
-source in the repo settings once it's pushed.
+`vite.config.js` sets `base: '/Skein/'`, matching the exact case of
+the repo name (`Virerra/Skein`) since GitHub Pages serves paths
+case-sensitively. If you ever rename the repo, update this to match. A
+GitHub Actions workflow (`.github/workflows/deploy.yml`) builds and
+deploys `dist/` to Pages on every push to `main`; enable Pages →
+GitHub Actions as the source in the repo settings once it's pushed.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

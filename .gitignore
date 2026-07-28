@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Env files — not used for secrets yet (API keys are memory-only,
+# never persisted), but ignored preemptively so a future .env never
+# lands in a commit by accident.
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
