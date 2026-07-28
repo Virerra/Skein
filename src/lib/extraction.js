@@ -31,7 +31,7 @@ export async function extractClaims({ transcript, sourceChat, settings, apiKey, 
   if (!transcript?.trim()) throw new Error("Transcript is empty.");
 
   const provider = settings?.provider || "anthropic";
-  const model = settings?.model;
+  const model = settings?.models?.[provider];
   let parsed;
 
   try {

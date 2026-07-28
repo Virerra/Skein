@@ -1,5 +1,5 @@
-import React from "react";
-import { checkWebLLMSupport } from "../lib/providers/webllm";
+import React, { useEffect, useState } from "react";
+import { checkWebLLMSupport, listWebLLMModels, RECOMMENDED_WEBLLM_MODELS } from "../lib/providers/webllm";
 
 const PROVIDERS = [
   { id: "anthropic", label: "Anthropic (BYOK)" },
@@ -7,33 +7,99 @@ const PROVIDERS = [
   { id: "webllm", label: "WebLLM (free, in-browser, experimental)" },
 ];
 
-const MODEL_PLACEHOLDER = {
-  anthropic: "claude-haiku-4-5-20251001",
-  "openai-compatible": "gpt-4o-mini",
-  webllm: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
-};
+// Curated shortlists for the dropdown. Anthropic and OpenAI-compatible
+// both also offer a "Custom" option below since new hosted models ship
+// often and local servers (Ollama, LM Studio, vLLM) use arbitrary names
+// no fixed list could predict. WebLLM deliberately has no Custom escape
+// hatch -- see listWebLLMModels() in providers/webllm.js: its dropdown
+// is populated from the installed package's own valid model list, so
+// there's no way to type in an ID that doesn't exist.
+const ANTHROPIC_MODELS = [
+  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5 — fastest, cheapest (recommended)" },
+  { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
+  { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
+];
+
+const OPENAI_COMPATIBLE_MODELS = [
+  { id: "gpt-4o-mini", label: "gpt-4o-mini (recommended, cheap)" },
+  { id: "gpt-4o", label: "gpt-4o" },
+];
+
+const CUSTOM = "__custom__";
 
 export function SettingsPanel({ settings, onSettingsChange, apiKey, onApiKeyChange }) {
-  const webllmSupport = settings.provider === "webllm" ? checkWebLLMSupport() : null;
+  const provider = settings.provider;
+  const model = settings.models?.[provider] || "";
+  const webllmSupport = provider === "webllm" ? checkWebLLMSupport() : null;
+  const [webllmModels, setWebllmModels] = useState(null); // null = still loading
+  const [webllmError, setWebllmError] = useState(null);
+  const [confirmedModel, setConfirmedModel] = useState(null);
+  // Explicit flag for "user picked Custom and hasn't typed a real value
+  // yet" -- can't infer this from model alone, since clearing model to
+  // "" to make room for typing would otherwise look identical to "no
+  // default has been set," and the effect below would instantly
+  // overwrite it back to the preset before a keystroke landed.
+  const [customMode, setCustomMode] = useState(false);
+
+  useEffect(() => {
+    setCustomMode(false);
+  }, [provider]);
+
+  useEffect(() => {
+    if (provider !== "webllm" || webllmModels) return;
+    listWebLLMModels()
+      .then(setWebllmModels)
+      .catch((e) => setWebllmError(e.message || "Couldn't load the WebLLM model list."));
+  }, [provider, webllmModels]);
+
+  // Give each provider a real default the first time it's used, rather
+  // than leaving its slot blank until the user picks something -- an
+  // empty field is easy to mistake for "nothing saved yet." Each
+  // provider has its own slot (settings.models[provider]), so switching
+  // providers never shows a stale model from a different provider.
+  // Skipped entirely while customMode is active -- see above.
+  useEffect(() => {
+    if (customMode || model) return;
+    if (provider === "anthropic") setModel(ANTHROPIC_MODELS[0].id);
+    else if (provider === "openai-compatible") setModel(OPENAI_COMPATIBLE_MODELS[0].id);
+    else if (provider === "webllm") setModel(RECOMMENDED_WEBLLM_MODELS[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, model, customMode]);
 
   function set(patch) {
     onSettingsChange({ ...settings, ...patch });
   }
 
+  function setModel(id) {
+    onSettingsChange({ ...settings, models: { ...settings.models, [provider]: id } });
+  }
+
+  function selectModel(id) {
+    setModel(id);
+    setConfirmedModel(id);
+  }
+
+  const presetsFor = {
+    anthropic: ANTHROPIC_MODELS,
+    "openai-compatible": OPENAI_COMPATIBLE_MODELS,
+  }[provider];
+
+  const isCustomValue = customMode || (presetsFor && model && !presetsFor.some((m) => m.id === model));
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <div>
         <div style={labelStyle}>Model provider</div>
-        <select value={settings.provider} onChange={(e) => set({ provider: e.target.value })} style={fieldStyle}>
+        <select value={provider} onChange={(e) => set({ provider: e.target.value })} style={fieldStyle}>
           {PROVIDERS.map((p) => (
             <option key={p.id} value={p.id}>{p.label}</option>
           ))}
         </select>
       </div>
 
-      {(settings.provider === "anthropic" || settings.provider === "openai-compatible") && (
+      {(provider === "anthropic" || provider === "openai-compatible") && (
         <div>
-          <div style={labelStyle}>API key {settings.provider === "openai-compatible" ? "(optional for local servers)" : ""}</div>
+          <div style={labelStyle}>API key {provider === "openai-compatible" ? "(optional for local servers)" : ""}</div>
           <input
             type="password"
             placeholder="kept in memory only, never saved"
@@ -44,7 +110,7 @@ export function SettingsPanel({ settings, onSettingsChange, apiKey, onApiKeyChan
         </div>
       )}
 
-      {settings.provider === "openai-compatible" && (
+      {provider === "openai-compatible" && (
         <div>
           <div style={labelStyle}>Base URL</div>
           <input
@@ -57,27 +123,83 @@ export function SettingsPanel({ settings, onSettingsChange, apiKey, onApiKeyChan
         </div>
       )}
 
-      {settings.provider !== "webllm" && (
+      {/* Anthropic / OpenAI-compatible: dropdown of known-good IDs + Custom escape hatch */}
+      {presetsFor && (
         <div>
           <div style={labelStyle}>Model</div>
-          <input
-            placeholder={MODEL_PLACEHOLDER[settings.provider]}
-            value={settings.model}
-            onChange={(e) => set({ model: e.target.value })}
+          <select
+            value={isCustomValue ? CUSTOM : model}
+            onChange={(e) => {
+              if (e.target.value === CUSTOM) {
+                setCustomMode(true);
+                setModel("");
+              } else {
+                setCustomMode(false);
+                selectModel(e.target.value);
+              }
+            }}
             style={fieldStyle}
-          />
+          >
+            {presetsFor.map((m) => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+            <option value={CUSTOM}>Custom…</option>
+          </select>
+
+          {isCustomValue && (
+            <input
+              autoFocus
+              placeholder="exact model ID"
+              value={model}
+              onChange={(e) => {
+                selectModel(e.target.value);
+                if (e.target.value.trim()) setCustomMode(false);
+              }}
+              style={{ ...fieldStyle, marginTop: "8px" }}
+            />
+          )}
+
+          {model && <ConfirmedModel id={model} justConfirmed={confirmedModel === model} />}
         </div>
       )}
 
-      {settings.provider === "webllm" && (
+      {/* WebLLM: dropdown ONLY, sourced live from the installed package's
+          own valid model list -- there is deliberately no free-text
+          option here, since that's exactly what produces "Cannot find
+          model record in appConfig for X". */}
+      {provider === "webllm" && (
         <div>
           <div style={labelStyle}>Model</div>
-          <input
-            placeholder={MODEL_PLACEHOLDER.webllm}
-            value={settings.model}
-            onChange={(e) => set({ model: e.target.value })}
-            style={fieldStyle}
-          />
+
+          {webllmError && <div style={{ ...hintStyle, color: "var(--color-bronze)" }}>{webllmError}</div>}
+
+          {!webllmError && (
+            <select
+              value={model}
+              onChange={(e) => selectModel(e.target.value)}
+              disabled={!webllmModels}
+              style={fieldStyle}
+            >
+              {!webllmModels && <option>Loading model list…</option>}
+              {webllmModels && (
+                <>
+                  <optgroup label="Recommended — small and fast">
+                    {RECOMMENDED_WEBLLM_MODELS.map((id) => (
+                      <option key={id} value={id}>{id}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label={`All models (${webllmModels.length})`}>
+                    {webllmModels.map((id) => (
+                      <option key={id} value={id}>{id}</option>
+                    ))}
+                  </optgroup>
+                </>
+              )}
+            </select>
+          )}
+
+          {model && <ConfirmedModel id={model} justConfirmed={confirmedModel === model} />}
+
           <div style={{ ...hintStyle, color: webllmSupport.hasWebGPU ? "var(--text-muted)" : "var(--color-bronze)" }}>
             {webllmSupport.note}
           </div>
@@ -109,6 +231,29 @@ export function SettingsPanel({ settings, onSettingsChange, apiKey, onApiKeyChan
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Persistent, not a fading toast -- "so I know I did select it" reads
+// as wanting ongoing certainty, not a blink-and-you-miss-it moment.
+// Still gets a brief highlight right after a fresh selection so the
+// change itself is noticeable, then settles into a plain confirmation.
+function ConfirmedModel({ id, justConfirmed }) {
+  return (
+    <div
+      style={{
+        ...hintStyle,
+        marginTop: "8px",
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        color: justConfirmed ? "var(--accent-primary)" : "var(--text-secondary)",
+        transition: "color 600ms ease",
+      }}
+    >
+      <span style={{ color: "var(--accent-primary)" }}>✓</span>
+      Using: {id}
     </div>
   );
 }

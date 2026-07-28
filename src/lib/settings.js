@@ -8,7 +8,10 @@ const STORAGE_KEY = "skein-settings";
 
 export const DEFAULT_SETTINGS = {
   provider: "anthropic", // "anthropic" | "openai-compatible" | "webllm"
-  model: "",
+  // One remembered model per provider, not a single shared field --
+  // switching providers must never leave a stale model ID from a
+  // different provider sitting in the new provider's dropdown.
+  models: { anthropic: "", "openai-compatible": "", webllm: "" },
   baseUrl: "",
   theme: "dark", // "dark" | "light"
 };

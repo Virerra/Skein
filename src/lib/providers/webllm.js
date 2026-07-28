@@ -8,6 +8,27 @@
 
 import { parseClaimsResponse } from "./parseClaimsResponse";
 
+// Curated starting point for the Settings dropdown -- small, fast,
+// instruction-tuned models that are reasonable to run in a browser.
+// The full list (163+ models as of writing) is available via
+// listWebLLMModels() below for anyone who wants something specific.
+export const RECOMMENDED_WEBLLM_MODELS = [
+  "Llama-3.2-1B-Instruct-q4f16_1-MLC",
+  "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+  "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
+  "Phi-3.5-mini-instruct-q4f16_1-MLC",
+];
+
+// Pulled live from the installed package's own config rather than
+// hand-maintained, so it can never drift out of sync with what
+// CreateMLCEngine will actually accept. This is what fixes "Cannot
+// find model record in appConfig for X" at the source: the dropdown
+// can only ever offer IDs that are already valid.
+export async function listWebLLMModels() {
+  const webllm = await import("@mlc-ai/web-llm");
+  return webllm.prebuiltAppConfig.model_list.map((m) => m.model_id).sort();
+}
+
 export function checkWebLLMSupport() {
   const hasWebGPU = typeof navigator !== "undefined" && !!navigator.gpu;
   const isolated = typeof window !== "undefined" && window.crossOriginIsolated === true;
@@ -68,7 +89,7 @@ export async function extractWithWebLLM({ transcript, systemPrompt, model, signa
   const support = checkWebLLMSupport();
   if (!support.hasWebGPU) throw new Error(support.note);
 
-  const resolvedModel = model || "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+  const resolvedModel = model || RECOMMENDED_WEBLLM_MODELS[0];
 
   let engine;
   try {
