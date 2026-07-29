@@ -6,9 +6,6 @@ them, then use the graph — not raw transcripts — as the RAG retrieval layer.
 
 Full pipeline, stack rationale, and what's deliberately naive in the current
 implementation: see README.md.
-Full product vision and original design-token rationale: see docs/project-brief.md.
-Original copy/voice rules and visual foundations from the Claude Design
-export: see docs/design-notes.md.
 
 ## Terminology — use exactly, don't substitute
 - "claim" — never "note" or "message"

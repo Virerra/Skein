@@ -1,13 +1,27 @@
-# Skein
+<p align="center">
+  <img src=".github/assets/logo.png" alt="Skein" width="360" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/Virerra/Skein/actions/workflows/deploy.yml"><img src="https://github.com/Virerra/Skein/actions/workflows/deploy.yml/badge.svg" alt="Deploy status" /></a>
+  <a href="https://virerra.github.io/Skein/"><img src="https://img.shields.io/badge/demo-live-DECD87" alt="Live demo" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-B2945B" alt="License: MIT" /></a>
+</p>
 
 A personal knowledge graph: paste chat transcripts, extract atomic
 claims, and let contradictory claims chain into correction history
-instead of overwriting each other.
+instead of overwriting each other. The graph — not the raw
+transcripts — is what a real RAG query answers from.
 
-This is a **first vertical slice**, not the full system from the
-brief. It proves the pipeline end to end with the simplest thing that
-could work at each stage — several pieces are naive on purpose, see
-"What's naive on purpose" below.
+**[Live demo →](https://virerra.github.io/Skein/)**
+
+![Skein graph and query view](.github/assets/screenshot.png)
+
+Real embedding-based retrieval and LLM synthesis, topic-clustered graph
+with AI-assisted and manual cross-topic relations, bulk re-categorization,
+and a separate CLI (`cli/`) for the same extract → categorize → query
+pipeline with no browser involved. Several pieces are still naive on
+purpose, deliberately — see "What's naive on purpose" below.
 
 ## Running it
 
@@ -48,10 +62,44 @@ transcript" to paste a chat transcript and extract claims from it.
   `NodeMiniWindow` (the compact chain popover for clicking a node,
   wraps `ThreadPanel`'s chain-detail/edit/discard content unchanged).
 - `src/design/` — components and tokens originally pulled from the
-  Claude Design system export (`Skein_Design_System.zip`). The
-  neumorphic soft-shadow treatment from that export was mostly
-  replaced with flat chrome, then brought back deliberately for
-  buttons and cluster-filter rows only — see "Visual identity".
+  Claude Design system export. Pruned down to only what's actually
+  imported — the export's `.prompt.md`/`.d.ts`/`.card.html` artifacts
+  and four generated components that never ended up wired into the app
+  (`Card`, `Input`, and a `Knot`/`Thread` pair superseded by
+  `GraphCanvas`'s own custom rendering) are gone; what's left is only
+  what's load-bearing. The neumorphic soft-shadow treatment from that
+  export was mostly replaced with flat chrome, then brought back
+  deliberately for buttons and cluster-filter rows only — see "Visual
+  identity".
+
+## CLI
+
+A separate, independent tool lives in [`cli/`](cli/) — same
+extract → categorize → query pipeline, no browser, no graph, plain
+JSON storage instead of IndexedDB. Full details in
+[`cli/README.md`](cli/README.md); the short version, since it comes up
+immediately:
+
+- **API key** — goes in your env (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`,
+  each provider's own standard variable name, not a Skein-specific
+  one), or passed per-command with `--key`. Never stored anywhere.
+- **Provider and model are both your choice** — `--provider anthropic|openai`
+  (default `anthropic`), `--model <id>` for whichever one you picked.
+  Not fixed, not hardcoded to one vendor.
+- **Local model — yes, via the `openai` provider pointed at a local
+  server**: `--provider openai --base-url http://localhost:11434/v1`
+  talks to Ollama (or LM Studio, vLLM, anything that speaks the same
+  API shape) with no key needed at all. There's no WebLLM-equivalent
+  bundled *in* the CLI itself (that's a browser/WebGPU technology with
+  no Node equivalent), but "point it at something running locally" is
+  the CLI's version of the same idea.
+- **`query` needs a second, separate key** (`OPENAI_API_KEY` /
+  `--embed-key`) even if you're answering questions through Anthropic —
+  Anthropic has no embeddings API at all, so retrieval always goes
+  through OpenAI's `/embeddings` endpoint (or a local server via
+  `--embed-base-url`) regardless of which provider is doing the actual
+  answering. Real constraint of their API, explained in the CLI's own
+  README so it isn't a confusing surprise mid-command.
 
 ## Model providers
 
