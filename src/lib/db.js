@@ -51,7 +51,8 @@
 // (lib/providers/embed.js), regardless of which provider is selected
 // for chat, since Anthropic has no embeddings API to route through.
 
-const DB_NAME = "skein";
+import { getActiveWorkspaceId, dbNameForWorkspace } from "./workspace";
+
 const DB_VERSION = 4;
 const CLAIMS_STORE = "claims";
 const RELATIONS_STORE = "relations";
@@ -59,8 +60,13 @@ const POSITIONS_STORE = "positions";
 const EMBEDDINGS_STORE = "embeddings";
 
 function openDB() {
+  // Reads the active workspace at call time, not once at module load --
+  // every function below funnels through this, so switching workspaces
+  // is the only change needed anywhere in this file for every read and
+  // write to land in the right database.
+  const dbName = dbNameForWorkspace(getActiveWorkspaceId());
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    const req = indexedDB.open(dbName, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(CLAIMS_STORE)) {

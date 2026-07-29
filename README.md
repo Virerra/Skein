@@ -34,6 +34,33 @@ Open Settings (gear icon) to configure a model provider before your
 first extraction — see "Model providers" below. Then use "Add
 transcript" to paste a chat transcript and extract claims from it.
 
+## Workspaces
+
+A workspace is a genuinely separate IndexedDB database, not a filter
+on shared data (`src/lib/workspace.js`). Switch, create, rename, or
+delete one from the dropdown under the wordmark. That's a deliberate
+choice, not just a convenient one: "start a fresh graph for testing"
+becomes an actual `indexedDB.deleteDatabase()` call on that workspace's
+own database when you're done with it, with no query filter anywhere
+that could leak one workspace's rows into another, because there's no
+shared table for a bug like that to happen on in the first place.
+
+If you already had claims before this feature existed, they're
+untouched and still exactly where they were — the first workspace
+("Main") deliberately maps to the original bare `skein` database name,
+not a new one, so upgrading needed zero migration.
+
+Drafts (`src/lib/drafts.js`) are workspace-scoped too, for the same
+reason claims are: a pasted-but-not-yet-extracted transcript belongs to
+whichever graph it's about to become part of. Settings (provider,
+model, theme, remembered API key) stay global on purpose — those are
+preferences about how you work, not part of any one graph's content.
+
+The CLI doesn't have an equivalent switcher, and doesn't need one: its
+`.skein/store.json` is already scoped to whatever directory you run it
+from, which *is* the same isolation, just expressed as "which folder
+you're in" instead of a dropdown.
+
 ## What's here
 
 - `src/lib/db.js` — IndexedDB storage. One `claims` object store.

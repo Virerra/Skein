@@ -9,9 +9,11 @@ import { applyNewClaims, buildClusters, getChain } from "./lib/graphModel";
 import { runQuery } from "./lib/query";
 import { loadSettings, saveSettings, applyTheme } from "./lib/settings";
 import { loadRememberedApiKey, saveRememberedApiKey, getRememberPreference, setRememberPreference } from "./lib/keyStorage";
+import { getWorkspaces, getActiveWorkspaceId, setActiveWorkspaceId, createWorkspace, renameWorkspace, deleteWorkspace } from "./lib/workspace";
 
 import { GraphCanvas } from "./components/GraphCanvas";
 import { Wordmark } from "./components/Wordmark";
+import { WorkspaceSwitcher } from "./components/WorkspaceSwitcher";
 import { IngestPanel } from "./components/IngestPanel";
 import { DraftsModal } from "./components/DraftsModal";
 import { DiscardedModal } from "./components/DiscardedModal";
@@ -27,6 +29,8 @@ import { assignTopicColors } from "./lib/topicColor";
 export default function App() {
   const [claims, setClaims] = useState([]);
   const [relations, setRelations] = useState([]);
+  const [workspaces, setWorkspaces] = useState(getWorkspaces);
+  const [activeWorkspaceId, setActiveWorkspaceIdState] = useState(getActiveWorkspaceId);
   const [relateMode, setRelateMode] = useState(false);
   const [categorizing, setCategorizing] = useState(false);
   const [relabeling, setRelabeling] = useState(false);
@@ -59,11 +63,64 @@ export default function App() {
         setRelations(r);
       })
       .catch((e) => setError(e.message));
-  }, []);
+    // Deliberately re-runs on workspace switch, not just on mount --
+    // db.js reads the active workspace at call time (see openDB), so
+    // getAllClaims()/getAllRelations() here are already pointed at
+    // whichever database is now current; this just needs to actually
+    // fire again to pull it in.
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     applyTheme(settings.theme);
   }, [settings.theme]);
+
+  // Shared by switch and delete-of-the-active-workspace -- anything
+  // that only makes sense in the context of a specific workspace's
+  // graph (a selection, an open query answer, a topic filter) carrying
+  // over from a different graph would be actively confusing, not a
+  // convenience.
+  function resetWorkspaceScopedUI() {
+    setSelectedClaimId(null);
+    setMiniWindowAnchor(null);
+    setSelectedTopics(null);
+    setQueryText("");
+    setQueryResult(null);
+    setQueryError(null);
+    setError(null);
+    setRelateMode(false);
+  }
+
+  function handleSwitchWorkspace(id) {
+    if (id === activeWorkspaceId) return;
+    setActiveWorkspaceId(id);
+    setActiveWorkspaceIdState(id);
+    resetWorkspaceScopedUI();
+  }
+
+  function handleCreateWorkspace(name) {
+    const workspace = createWorkspace(name);
+    setWorkspaces(getWorkspaces());
+    handleSwitchWorkspace(workspace.id);
+  }
+
+  function handleRenameWorkspace(id, name) {
+    renameWorkspace(id, name);
+    setWorkspaces(getWorkspaces());
+  }
+
+  async function handleDeleteWorkspace(id) {
+    const wasActive = id === activeWorkspaceId;
+    try {
+      await deleteWorkspace(id);
+      setWorkspaces(getWorkspaces());
+      if (wasActive) {
+        setActiveWorkspaceIdState(getActiveWorkspaceId());
+        resetWorkspaceScopedUI();
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+  }
 
   function handleSettingsChange(next) {
     setSettings(next);
@@ -421,6 +478,17 @@ export default function App() {
           </button>
         </div>
 
+        <div style={{ marginTop: "14px", marginBottom: "16px" }}>
+          <WorkspaceSwitcher
+            workspaces={workspaces}
+            activeId={activeWorkspaceId}
+            onSwitch={handleSwitchWorkspace}
+            onCreate={handleCreateWorkspace}
+            onRename={handleRenameWorkspace}
+            onDelete={handleDeleteWorkspace}
+          />
+        </div>
+
         <div style={{ display: "flex", gap: "8px" }}>
           <Button variant="secondary" onClick={() => { setError(null); setPendingDraftId(null); setIngestOpen(true); }}>Add transcript</Button>
           <Button variant="ghost" onClick={() => setDraftsOpen(true)}>Drafts</Button>
@@ -499,6 +567,7 @@ export default function App() {
             </div>
           ) : (
             <GraphCanvas
+              key={activeWorkspaceId}
               ref={graphRef}
               claims={visibleClaims}
               onSelectClaim={handleSelectClaim}
