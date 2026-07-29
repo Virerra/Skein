@@ -491,51 +491,27 @@ export default function App() {
 
         <div style={{ display: "flex", gap: "8px" }}>
           <Button variant="secondary" onClick={() => { setError(null); setPendingDraftId(null); setIngestOpen(true); }}>Add transcript</Button>
-          <Button variant="ghost" onClick={() => setDraftsOpen(true)}>Drafts</Button>
+          <Button variant="secondary" onClick={() => setDraftsOpen(true)}>Drafts</Button>
         </div>
 
         <div style={{ marginTop: "8px" }}>
-          <Button variant="ghost" onClick={() => setDiscardedOpen(true)}>
+          <Button variant="secondary" size="sm" onClick={() => setDiscardedOpen(true)}>
             Discarded{discardedClaims.length > 0 ? ` (${discardedClaims.length})` : ""}
           </Button>
         </div>
 
         {clusterFilterData.length > 0 && (
           <div style={{ marginTop: "20px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-              <div style={{ font: "var(--text-mono-sm)", color: "var(--text-muted)", textTransform: "uppercase" }}>
-                Clusters
-              </div>
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button
-                  onClick={handleRelabel}
-                  disabled={relabeling}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: relabeling ? "var(--text-muted)" : "var(--accent-primary)",
-                    font: "var(--text-mono-sm)",
-                    cursor: relabeling ? "default" : "pointer",
-                    padding: 0,
-                  }}
-                >
-                  {relabeling ? "Relabeling…" : "Relabel"}
-                </button>
-                <button
-                  onClick={handleCategorize}
-                  disabled={categorizing}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: categorizing ? "var(--text-muted)" : "var(--accent-primary)",
-                    font: "var(--text-mono-sm)",
-                    cursor: categorizing ? "default" : "pointer",
-                    padding: 0,
-                  }}
-                >
-                  {categorizing ? "Categorizing…" : "Categorize"}
-                </button>
-              </div>
+            <div style={{ font: "var(--text-mono-sm)", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "10px" }}>
+              Clusters
+            </div>
+            <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+              <Button variant="secondary" size="sm" onClick={handleRelabel} disabled={relabeling}>
+                {relabeling ? "Relabeling…" : "Relabel"}
+              </Button>
+              <Button variant="secondary" size="sm" onClick={handleCategorize} disabled={categorizing}>
+                {categorizing ? "Categorizing…" : "Categorize"}
+              </Button>
             </div>
             <ClusterFilter
               clusters={clusterFilterData}
@@ -553,10 +529,13 @@ export default function App() {
 
       <main style={{ position: "relative", padding: "16px", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginBottom: "8px" }}>
-          <Button variant="ghost" size="sm" onClick={handleSuggestRelations} disabled={suggestingRelations}>
+          <Button variant="secondary" size="sm" onClick={() => graphRef.current?.organize()}>
+            Organize clusters
+          </Button>
+          <Button variant="secondary" size="sm" onClick={handleSuggestRelations} disabled={suggestingRelations}>
             {suggestingRelations ? "Finding connections…" : "Suggest relations"}
           </Button>
-          <Button variant={relateMode ? "correction" : "ghost"} size="sm" onClick={() => setRelateMode((v) => !v)}>
+          <Button variant={relateMode ? "correction" : "secondary"} size="sm" onClick={() => setRelateMode((v) => !v)}>
             {relateMode ? "Done connecting" : "Make relations"}
           </Button>
         </div>

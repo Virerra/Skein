@@ -266,10 +266,14 @@ export const GraphCanvas = forwardRef(function GraphCanvas({
   // means a near-instant blank canvas rather than a visible flash.
   const [positionsLoaded, setPositionsLoaded] = useState(false);
 
-  // Imperative escape hatch for "center the view on this node" -- used
-  // by the mini-window's Locate button. Deliberately not lifting pan/
-  // zoom state up to App.jsx for this: it's the one thing App needs to
-  // trigger here, not something it needs to own.
+  // Imperative escape hatch for "center the view on this node" (used by
+  // the mini-window's Locate button) and "run the full reflow" (used by
+  // App.jsx's Organize clusters button, moved there so it lives in the
+  // same toolbar as Suggest relations / Make relations instead of
+  // floating as its own overlay inside the canvas). Deliberately not
+  // lifting pan/zoom/layout state up to App.jsx for this: these are the
+  // only two things App needs to trigger here, not things it needs to
+  // own.
   useImperativeHandle(ref, () => ({
     focusNode(id) {
       const pos = positionsRef.current.get(id);
@@ -277,6 +281,7 @@ export const GraphCanvas = forwardRef(function GraphCanvas({
       setView((v) => ({ scale: v.scale, x: WIDTH / 2 - pos.x * v.scale, y: HEIGHT / 2 - pos.y * v.scale }));
       return true;
     },
+    organize: handleOrganize,
   }));
 
   useEffect(() => {
@@ -545,8 +550,6 @@ export const GraphCanvas = forwardRef(function GraphCanvas({
           {relateAnchor ? "Click another node to connect — or click the armed one again to cancel" : "Click a node to start connecting"}
         </div>
       )}
-
-      <button onClick={handleOrganize} style={organizeButtonStyle}>Organize clusters</button>
     </div>
   );
 });
@@ -576,16 +579,4 @@ const hintBadgeStyle = {
   color: "var(--text-secondary)",
 };
 
-const organizeButtonStyle = {
-  position: "absolute",
-  top: "12px",
-  right: "12px",
-  padding: "6px 12px",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid var(--border-default)",
-  background: "var(--surface-raised)",
-  color: "var(--text-secondary)",
-  fontFamily: "var(--font-ui)",
-  fontSize: "12px",
-  cursor: "pointer",
-};
+
