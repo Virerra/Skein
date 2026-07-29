@@ -13,29 +13,14 @@
 // claims); would need chunking before it scales further than that.
 
 import { runProvider } from "./providers/dispatch";
-
-const CATEGORIZE_SYSTEM_PROMPT = `You are given a JSON array of claims: [{"id": string, "text": string}].
-
-For each claim:
-- Assign a short, lowercase, 1-2 word topic. Use the exact same topic
-  for claims that are about the same real-world subject, even if
-  they're given different topics today -- consolidate near-duplicates
-  ("database" and "db setup" should become one) into a single
-  consistent name across the whole set.
-- Assign a short display label (2-4 words, title case, e.g. "Postgres
-  Over Mongo") -- a name for the claim, not a summary. This is what
-  shows on the graph node itself, so keep it readable on its own.
-
-Respond with ONLY a JSON array, no prose, no markdown fences. One
-element per input claim, same ids, in any order:
-{"id": string, "topic": string, "label": string}`;
+import { CATEGORIZE_PROMPT } from "../../shared/prompts";
 
 export async function categorizeClaims({ claims, settings, apiKey, signal }) {
   const candidates = claims.filter((c) => c.status !== "discarded");
   if (candidates.length === 0) throw new Error("No claims to categorize.");
 
   const payload = JSON.stringify(candidates.map((c) => ({ id: c.id, text: c.text })));
-  const result = await runProvider({ content: payload, systemPrompt: CATEGORIZE_SYSTEM_PROMPT, settings, apiKey, signal });
+  const result = await runProvider({ content: payload, systemPrompt: CATEGORIZE_PROMPT, settings, apiKey, signal });
 
   const byId = new Map(
     result

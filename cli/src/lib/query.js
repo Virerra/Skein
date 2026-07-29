@@ -2,7 +2,8 @@
 // embedding-based retrieval, chain-aware (never answers from a
 // superseded claim just because its old wording matched closer than
 // whatever replaced it), synthesis through whichever chat provider is
-// selected, asked to cite retrieved claims inline as [1], [2].
+// selected, asked to cite retrieved claims inline as [1], [2]. Prompt
+// shared with the web app via ../../../shared/prompts.js.
 //
 // One structural difference from the web app: embeddings live in
 // store.embeddings (a plain object keyed by claim id) rather than a
@@ -14,21 +15,9 @@
 import { embedTexts, cosineSimilarity } from "./embed.js";
 import { buildClusters } from "./graphModel.js";
 import { runProvider } from "./providers/dispatch.js";
+import { SYNTHESIS_PROMPT } from "../../../shared/prompts.js";
 
 const TOP_K = 6;
-
-const SYNTHESIS_SYSTEM_PROMPT = `You answer a question using ONLY the numbered
-claims provided below, each tagged with its topic.
-
-Rules:
-- Base your answer only on the given claims. If they don't contain enough to
-  answer, say that plainly instead of guessing or using outside knowledge.
-- Cite claims inline with their number in brackets, e.g. [1], wherever you
-  draw on one.
-- 2-4 sentences, unless the question genuinely needs more room.
-
-Respond with ONLY a JSON object, no prose, no markdown fences:
-{"answer": string, "citedIndices": number[]}`;
 
 export async function runQuery(store, queryText, { provider, model, apiKey, baseUrl, embed }) {
   const active = store.claims.filter((c) => c.status !== "discarded");
@@ -72,7 +61,7 @@ export async function runQuery(store, queryText, { provider, model, apiKey, base
   const contextText = sources.map((c, i) => `[${i + 1}] (${c.topic}) ${c.text}`).join("\n");
   const userContent = `Question: ${queryText}\n\nClaims:\n${contextText}`;
 
-  const result = await runProvider({ content: userContent, systemPrompt: SYNTHESIS_SYSTEM_PROMPT, provider, model, apiKey, baseUrl });
+  const result = await runProvider({ content: userContent, systemPrompt: SYNTHESIS_PROMPT, provider, model, apiKey, baseUrl });
 
   const rawIndices = Array.isArray(result?.citedIndices) ? result.citedIndices : [];
   const citedIndices = rawIndices.filter((i) => Number.isInteger(i) && i >= 1 && i <= sources.length);

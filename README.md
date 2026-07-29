@@ -101,11 +101,14 @@ you're in" instead of a dropdown.
 
 ## CLI
 
-A separate, independent tool lives in [`cli/`](cli/) — same
-extract → categorize → query pipeline, no browser, no graph, plain
-JSON storage instead of IndexedDB. Full details in
-[`cli/README.md`](cli/README.md); the short version, since it comes up
-immediately:
+A separate tool lives in [`cli/`](cli/) — same extract → categorize →
+query pipeline, no browser, no graph, plain JSON storage instead of
+IndexedDB. "Separate" but not fully independent anymore: it shares its
+actual prompt content with the web app via [`shared/prompts.js`](shared/prompts.js)
+at the repo root (see "Prompt sharing" below), so it can't be copied
+out on its own without bringing `shared/` along too. Full CLI details
+in [`cli/README.md`](cli/README.md); the short version, since it comes
+up immediately:
 
 - **API key** — goes in your env (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`,
   each provider's own standard variable name, not a Skein-specific
@@ -127,6 +130,27 @@ immediately:
   `--embed-base-url`) regardless of which provider is doing the actual
   answering. Real constraint of their API, explained in the CLI's own
   README so it isn't a confusing surprise mid-command.
+
+## Prompt sharing
+
+[`shared/prompts.js`](shared/prompts.js), a repo-root sibling of both
+`src/` and `cli/`, holds the extraction, categorize, relabel, and query
+synthesis prompts — the one place they're actually written, imported
+by both `src/lib/` and `cli/src/lib/` rather than kept as hand-synced
+copies. This wasn't the original setup: for a while these genuinely
+were separate files, and they'd already drifted by the time this
+changed, one real difference (the CLI's extraction prompt was missing
+a sentence the web app's had) had crept in from a fix applied to only
+one side.
+
+Deliberately *not* shared: the provider-dispatch/transport layer
+(`src/lib/providers/` and `cli/src/lib/providers/`). That's genuinely
+different between the two, not just historically duplicated — the web
+app supports three providers including a browser-only local model
+(WebLLM) and passes a `settings` object; the CLI is BYOK-only across
+two providers with flat `{provider, model, apiKey, baseUrl}` params.
+Sharing that layer too would mean papering over a real difference
+rather than removing a fake one.
 
 ## Model providers
 

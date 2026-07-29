@@ -1,7 +1,7 @@
 import React from "react";
 import { NeumorphicShadow } from "./neumorphism";
 
-export function Button({ variant = "primary", size = "md", disabled, children, onClick }) {
+export function Button({ variant = "primary", size = "md", disabled, fullWidth, children, onClick }) {
   const [pressed, setPressed] = React.useState(false);
   const pad = size === "sm" ? "6px 14px" : size === "lg" ? "13px 26px" : "10px 18px";
   const font = size === "sm" ? "var(--text-body-sm)" : "var(--text-body)";
@@ -17,12 +17,25 @@ export function Button({ variant = "primary", size = "md", disabled, children, o
     transition: `transform var(--duration-fast) var(--ease-standard), filter var(--duration-fast) var(--ease-standard)`,
     display: "inline-flex",
     alignItems: "center",
+    justifyContent: fullWidth ? "center" : "flex-start",
     gap: "8px",
+    width: fullWidth ? "100%" : undefined,
     transform: pressed && !disabled ? "scale(0.97)" : "scale(1)",
   };
   const variants = {
     primary: { background: "var(--gradient-primary)", color: "var(--text-on-accent)" },
     secondary: { background: "var(--surface-raised)", color: "var(--text-primary)" },
+    // Gold-tinted, theme-aware (color-mix blends whatever the current
+    // theme's tokens resolve to, so this works in light mode too, not
+    // just dark) -- a deliberately softer accent than "primary", for
+    // actions that trigger an LLM call (Relabel, Categorize, Suggest
+    // relations) as opposed to plain local/manual ones. The color
+    // itself is the signal: gold means "this calls a model."
+    accent: {
+      background: "color-mix(in srgb, var(--color-gold) 16%, var(--surface-raised))",
+      color: "var(--color-gold)",
+      border: "1px solid color-mix(in srgb, var(--color-gold) 35%, transparent)",
+    },
     ghost: { background: "transparent", color: "var(--text-secondary)" },
     correction: { background: "var(--gradient-correction)", color: "var(--text-on-accent)" },
   };

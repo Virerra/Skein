@@ -13,21 +13,14 @@
 //    names (not touching topics at all) was the wrong coupling.
 
 import { runProvider } from "./providers/dispatch";
-
-const RELABEL_SYSTEM_PROMPT = `You are given a JSON array of claims: [{"id": string, "text": string}].
-
-For each one, assign a short display label: 2-4 words, title case, e.g.
-"Postgres Over Mongo" -- a name for the claim, not a summary of it.
-
-Respond with ONLY a JSON array, no prose, no markdown fences:
-[{"id": string, "label": string}]`;
+import { RELABEL_PROMPT } from "../../shared/prompts";
 
 export async function relabelClaims({ claims, settings, apiKey, signal }) {
   const candidates = claims.filter((c) => c.status !== "discarded");
   if (candidates.length === 0) return [];
 
   const payload = JSON.stringify(candidates.map((c) => ({ id: c.id, text: c.text })));
-  const result = await runProvider({ content: payload, systemPrompt: RELABEL_SYSTEM_PROMPT, settings, apiKey, signal });
+  const result = await runProvider({ content: payload, systemPrompt: RELABEL_PROMPT, settings, apiKey, signal });
 
   return result
     .filter((r) => r?.id && r?.label)

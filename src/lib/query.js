@@ -13,21 +13,9 @@ import { embedTexts, cosineSimilarity } from "./providers/embed";
 import { getAllEmbeddings, putEmbeddings } from "./db";
 import { buildClusters } from "./graphModel";
 import { runProvider } from "./providers/dispatch";
+import { SYNTHESIS_PROMPT } from "../../shared/prompts";
 
 const TOP_K = 6;
-
-const SYNTHESIS_SYSTEM_PROMPT = `You answer a question using ONLY the numbered
-claims provided below, each tagged with its topic.
-
-Rules:
-- Base your answer only on the given claims. If they don't contain enough to
-  answer, say that plainly instead of guessing or using outside knowledge.
-- Cite claims inline with their number in brackets, e.g. [1], wherever you
-  draw on one.
-- 2-4 sentences, unless the question genuinely needs more room.
-
-Respond with ONLY a JSON object, no prose, no markdown fences:
-{"answer": string, "citedIndices": number[]}`;
 
 export async function runQuery(claims, queryText, { settings, apiKey, signal } = {}) {
   const active = claims.filter((c) => c.status !== "discarded");
@@ -76,7 +64,7 @@ export async function runQuery(claims, queryText, { settings, apiKey, signal } =
   const contextText = sources.map((c, i) => `[${i + 1}] (${c.topic}) ${c.text}`).join("\n");
   const userContent = `Question: ${queryText}\n\nClaims:\n${contextText}`;
 
-  const result = await runProvider({ content: userContent, systemPrompt: SYNTHESIS_SYSTEM_PROMPT, settings, apiKey, signal });
+  const result = await runProvider({ content: userContent, systemPrompt: SYNTHESIS_PROMPT, settings, apiKey, signal });
 
   const rawIndices = Array.isArray(result?.citedIndices) ? result.citedIndices : [];
   // 1-indexed, matching the [n] markers the model was given and (should

@@ -4,10 +4,16 @@ The same extraction/categorization pipeline as the Skein web app, no
 graph, no browser — paste a transcript, get atomic claims. Built for
 someone who wants to be fast and doesn't need to see anything.
 
+Lives at `Skein/cli/` in the main repo, not standalone — it imports
+prompt content from `../shared/prompts.js` (see "Prompts are shared"
+below), so unlike earlier in this project, it can't just be copied out
+and dropped anywhere on its own anymore. Moving it would mean bringing
+`shared/` along too.
+
 ## Install
 
 ```bash
-cd skein-cli
+cd Skein/cli
 npm link   # makes `skein` available globally, or just run node bin/skein.js directly
 ```
 
@@ -98,16 +104,19 @@ inlining it into every claim would make the file unreadable.
   design choice; the web app works around it by always embedding
   locally via WebLLM, which doesn't exist in plain Node.
 
-## Prompts are copies, not shared imports
+## Prompts are shared, the provider layer isn't
 
-`src/lib/extraction.js`, `src/lib/categorize.js`, and `src/lib/query.js`
-mirror the web app's versions exactly, but they're separate files, not
-a shared import across the two packages. That's a real tradeoff: change
-a prompt in one place and it won't automatically apply to the other.
-The alternative (importing directly from the web app's `src/lib/`) was
-available — those files have zero browser-specific dependencies once
-the WebLLM provider is excluded — but Node's ESM resolver requires
-explicit file extensions on relative imports where Vite doesn't, so it
-wasn't a drop-in path anyway. If prompt drift between the two ever
-becomes a real problem, that's the fix worth doing properly rather than
-working around here.
+`../shared/prompts.js` (one level up from this folder, at the repo
+root) holds the actual prompt content — extraction, categorize,
+relabel, and query synthesis — imported by both this CLI's `src/lib/`
+files and the web app's. Not copies kept manually in sync anymore:
+both sides import the literal same file, so a prompt change made once
+applies everywhere automatically.
+
+What's deliberately *not* shared is the provider-dispatch/transport
+layer (`src/lib/providers/`) — that's genuinely different between the
+two, not just historically duplicated. The web app supports three
+providers including a browser-only local model (WebLLM) and passes a
+`settings` object; this CLI is BYOK-only across two providers with flat
+`{provider, model, apiKey, baseUrl}` params. Unifying that would mean
+papering over a real difference, not removing a fake one.

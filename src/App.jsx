@@ -490,12 +490,16 @@ export default function App() {
         </div>
 
         <div style={{ display: "flex", gap: "8px" }}>
-          <Button variant="secondary" onClick={() => { setError(null); setPendingDraftId(null); setIngestOpen(true); }}>Add transcript</Button>
-          <Button variant="secondary" onClick={() => setDraftsOpen(true)}>Drafts</Button>
+          <div style={{ flex: 1 }}>
+            <Button variant="primary" fullWidth onClick={() => { setError(null); setPendingDraftId(null); setIngestOpen(true); }}>Add transcript</Button>
+          </div>
+          <div style={{ flex: 1 }}>
+            <Button variant="secondary" fullWidth onClick={() => setDraftsOpen(true)}>Drafts</Button>
+          </div>
         </div>
 
         <div style={{ marginTop: "8px" }}>
-          <Button variant="secondary" size="sm" onClick={() => setDiscardedOpen(true)}>
+          <Button variant="secondary" size="sm" fullWidth onClick={() => setDiscardedOpen(true)}>
             Discarded{discardedClaims.length > 0 ? ` (${discardedClaims.length})` : ""}
           </Button>
         </div>
@@ -506,12 +510,16 @@ export default function App() {
               Clusters
             </div>
             <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-              <Button variant="secondary" size="sm" onClick={handleRelabel} disabled={relabeling}>
-                {relabeling ? "Relabeling…" : "Relabel"}
-              </Button>
-              <Button variant="secondary" size="sm" onClick={handleCategorize} disabled={categorizing}>
-                {categorizing ? "Categorizing…" : "Categorize"}
-              </Button>
+              <div style={{ flex: 1 }}>
+                <Button variant="accent" size="sm" fullWidth onClick={handleRelabel} disabled={relabeling}>
+                  {relabeling ? "Relabeling…" : "Relabel"}
+                </Button>
+              </div>
+              <div style={{ flex: 1 }}>
+                <Button variant="accent" size="sm" fullWidth onClick={handleCategorize} disabled={categorizing}>
+                  {categorizing ? "Categorizing…" : "Categorize"}
+                </Button>
+              </div>
             </div>
             <ClusterFilter
               clusters={clusterFilterData}
@@ -532,7 +540,7 @@ export default function App() {
           <Button variant="secondary" size="sm" onClick={() => graphRef.current?.organize()}>
             Organize clusters
           </Button>
-          <Button variant="secondary" size="sm" onClick={handleSuggestRelations} disabled={suggestingRelations}>
+          <Button variant="accent" size="sm" onClick={handleSuggestRelations} disabled={suggestingRelations}>
             {suggestingRelations ? "Finding connections…" : "Suggest relations"}
           </Button>
           <Button variant={relateMode ? "correction" : "secondary"} size="sm" onClick={() => setRelateMode((v) => !v)}>
