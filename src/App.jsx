@@ -489,19 +489,17 @@ export default function App() {
           />
         </div>
 
-        <div style={{ display: "flex", gap: "8px" }}>
-          <div style={{ flex: 1 }}>
-            <Button variant="primary" fullWidth onClick={() => { setError(null); setPendingDraftId(null); setIngestOpen(true); }}>Add transcript</Button>
-          </div>
-          <div style={{ flex: 1 }}>
-            <Button variant="secondary" fullWidth onClick={() => setDraftsOpen(true)}>Drafts</Button>
-          </div>
-        </div>
+        <Button variant="primary" fullWidth onClick={() => { setError(null); setPendingDraftId(null); setIngestOpen(true); }}>Add transcript</Button>
 
-        <div style={{ marginTop: "8px" }}>
-          <Button variant="secondary" size="sm" fullWidth onClick={() => setDiscardedOpen(true)}>
-            Discarded{discardedClaims.length > 0 ? ` (${discardedClaims.length})` : ""}
-          </Button>
+        <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+          <div style={{ flex: 1 }}>
+            <Button variant="secondary" size="sm" fullWidth onClick={() => setDraftsOpen(true)}>Drafts</Button>
+          </div>
+          <div style={{ flex: 1 }}>
+            <Button variant="secondary" size="sm" fullWidth onClick={() => setDiscardedOpen(true)}>
+              Discarded{discardedClaims.length > 0 ? ` · ${discardedClaims.length}` : ""}
+            </Button>
+          </div>
         </div>
 
         {clusterFilterData.length > 0 && (
