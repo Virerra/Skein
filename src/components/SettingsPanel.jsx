@@ -27,7 +27,7 @@ const OPENAI_COMPATIBLE_MODELS = [
 
 const CUSTOM = "__custom__";
 
-export function SettingsPanel({ settings, onSettingsChange, apiKey, onApiKeyChange }) {
+export function SettingsPanel({ settings, onSettingsChange, apiKey, onApiKeyChange, rememberApiKey, onRememberApiKeyChange }) {
   const provider = settings.provider;
   const model = settings.models?.[provider] || "";
   const webllmSupport = provider === "webllm" ? checkWebLLMSupport() : null;
@@ -102,11 +102,24 @@ export function SettingsPanel({ settings, onSettingsChange, apiKey, onApiKeyChan
           <div style={labelStyle}>API key {provider === "openai-compatible" ? "(optional for local servers)" : ""}</div>
           <input
             type="password"
-            placeholder="kept in memory only, never saved"
+            placeholder={rememberApiKey ? "saved in this browser's storage" : "kept in memory only — cleared on reload"}
             value={apiKey}
             onChange={(e) => onApiKeyChange(e.target.value)}
             style={fieldStyle}
           />
+          <label style={{ display: "flex", alignItems: "flex-start", gap: "8px", marginTop: "8px", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={rememberApiKey}
+              onChange={(e) => onRememberApiKeyChange(e.target.checked)}
+              style={{ marginTop: "2px" }}
+            />
+            <span style={hintStyle}>
+              Remember this key on this device. Stores it in plain text in this
+              browser's local storage — readable by any script running on this
+              page. Fine on a personal machine; skip it on anything shared.
+            </span>
+          </label>
         </div>
       )}
 

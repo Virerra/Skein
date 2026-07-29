@@ -71,9 +71,17 @@ Settings (gear icon) lets you pick how extraction runs:
   can't set custom headers. Settings shows a live readout of whether
   your browser/host actually supports it before you rely on it.
 
-Whichever provider you pick, the API key (if any) is kept in memory
-only for the session — never written to localStorage or IndexedDB.
-Only the non-secret choice of provider/model/base-URL/theme persists.
+Whichever provider you pick, the API key (if any) is memory-only by
+default — never written to storage, cleared on reload. There's an
+explicit opt-in in Settings ("Remember this key on this device") for
+anyone who'd rather not retype it every session; turning it on writes
+the key to localStorage in plain text (`lib/keyStorage.js`, deliberately
+separate from `settings.js`, which still never touches the key itself).
+That's a real tradeoff, not a formality — plaintext in localStorage is
+readable by any script running on the page, so it's a reasonable choice
+on a personal machine and not a good one on anything shared. The
+preference and the input's own placeholder both say plainly which mode
+you're in.
 
 ## Visual identity
 

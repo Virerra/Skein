@@ -7,6 +7,7 @@ import { embedTexts } from "./lib/providers/embed";
 import { applyNewClaims, buildClusters, getChain } from "./lib/graphModel";
 import { runQuery } from "./lib/query";
 import { loadSettings, saveSettings, applyTheme } from "./lib/settings";
+import { loadRememberedApiKey, saveRememberedApiKey, getRememberPreference, setRememberPreference } from "./lib/keyStorage";
 
 import { GraphCanvas } from "./components/GraphCanvas";
 import { Wordmark } from "./components/Wordmark";
@@ -41,7 +42,8 @@ export default function App() {
   const [pendingDraftId, setPendingDraftId] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState(loadSettings);
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey, setApiKey] = useState(loadRememberedApiKey);
+  const [rememberApiKey, setRememberApiKeyState] = useState(getRememberPreference);
   const abortControllerRef = useRef(null);
 
   useEffect(() => {
@@ -60,6 +62,17 @@ export default function App() {
   function handleSettingsChange(next) {
     setSettings(next);
     saveSettings(next);
+  }
+
+  function handleApiKeyChange(key) {
+    setApiKey(key);
+    saveRememberedApiKey(key); // no-op internally unless rememberApiKey is on
+  }
+
+  function handleRememberChange(remember) {
+    setRememberApiKeyState(remember);
+    setRememberPreference(remember);
+    if (remember) saveRememberedApiKey(apiKey); // capture whatever's currently typed in, not just future changes
   }
 
   // Discarded claims are hidden from the graph, cluster filter, and
@@ -403,7 +416,14 @@ export default function App() {
       />
 
       <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} title="Settings">
-        <SettingsPanel settings={settings} onSettingsChange={handleSettingsChange} apiKey={apiKey} onApiKeyChange={setApiKey} />
+        <SettingsPanel
+          settings={settings}
+          onSettingsChange={handleSettingsChange}
+          apiKey={apiKey}
+          onApiKeyChange={handleApiKeyChange}
+          rememberApiKey={rememberApiKey}
+          onRememberApiKeyChange={handleRememberChange}
+        />
       </Modal>
     </div>
   );
