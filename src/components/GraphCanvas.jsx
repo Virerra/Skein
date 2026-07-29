@@ -100,12 +100,41 @@ function computeLayout(ids, topicGroups, seedPositions) {
   return positions;
 }
 
-// Soft, blurred boundary behind each topic's nodes -- proximity plus
-// this halo communicates "these belong together," instead of drawn
-// connecting lines (which get messy fast: a 5-claim topic is 10 lines
-// as a complete graph). One halo per topic, not per pair.
-function ClusterHalo({ cx, cy, r, color }) {
-  return <circle cx={cx} cy={cy} r={r} fill={color} opacity="0.09" filter="url(#skein-halo-blur)" style={{ pointerEvents: "none" }} />;
+// Soft blob behind each topic's nodes -- proximity plus this halo
+// communicates "these belong together," instead of drawn connecting
+// lines (which get messy fast: a 5-claim topic is 10 lines as a
+// complete graph). Deliberately NOT one circle sized to the farthest
+// node: that reads as "a circle that gets bigger or smaller," an
+// artificial boundary that doesn't actually follow the cluster's real
+// shape, ballooning for any elongated or irregular arrangement.
+//
+// Instead: one small soft circle per node in the topic, all fed
+// through a shared blur, then an feColorMatrix that pushes the alpha
+// channel through a steep threshold (the classic SVG "goo"/metaball
+// recipe). Wherever two node-circles overlap or sit close, their
+// blurred edges combine past the threshold and fuse into one solid
+// blob; isolated tails fade out below it. The result actually traces
+// the cluster's shape -- stretches, bends, branches -- rather than
+// approximating it with a single piece of geometry.
+function ClusterBlob({ ids, positions, color }) {
+  return (
+    <g filter="url(#skein-goo)" style={{ pointerEvents: "none" }} opacity="0.5">
+      {ids.map((id) => {
+        const p = positions.get(id);
+        if (!p) return null;
+        return (
+          <circle
+            key={id}
+            cx={p.x}
+            cy={p.y}
+            r={34}
+            fill={color}
+            style={{ transition: "cx 400ms ease, cy 400ms ease" }}
+          />
+        );
+      })}
+    </g>
+  );
 }
 
 // A manually-declared relation between two claims, independent of
@@ -345,8 +374,13 @@ export function GraphCanvas({
         onPointerDown={handleBackgroundPointerDown}
       >
         <defs>
-          <filter id="skein-halo-blur" x="-60%" y="-60%" width="220%" height="220%">
-            <feGaussianBlur stdDeviation="18" />
+          <filter id="skein-goo" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="blurred" />
+            <feColorMatrix
+              in="blurred"
+              mode="matrix"
+              values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9"
+            />
           </filter>
           <filter id="skein-shadow" x="-80%" y="-80%" width="260%" height="260%">
             <feDropShadow dx="2.5" dy="3.5" stdDeviation="2.2" floodColor="#000" floodOpacity="0.45" />
@@ -367,14 +401,9 @@ export function GraphCanvas({
         </defs>
 
         <g transform={`translate(${view.x},${view.y}) scale(${view.scale})`}>
-          {Array.from(topicGroups.entries()).map(([topic, ids]) => {
-            const pts = ids.map((id) => positionsRef.current.get(id)).filter(Boolean);
-            if (pts.length === 0) return null;
-            const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
-            const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
-            const r = pts.length === 1 ? 44 : Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy))) + 40;
-            return <ClusterHalo key={`halo-${topic}`} cx={cx} cy={cy} r={r} color={topicColors.get(topic)} />;
-          })}
+          {Array.from(topicGroups.entries()).map(([topic, ids]) => (
+            <ClusterBlob key={`halo-${topic}`} ids={ids} positions={positionsRef.current} color={topicColors.get(topic)} />
+          ))}
 
           {relations.map((r) => {
             const a = positionsRef.current.get(r.a);

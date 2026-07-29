@@ -74,21 +74,31 @@ The graph (`src/components/GraphCanvas.jsx`) is a hand-rolled
 force-directed layout and SVG renderer, not Cytoscape (removed —
 it's what dropped the production bundle from ~640KB to ~210KB).
 Claims cluster spatially by **topic**, not by supersession: every pair
-of same-topic claims gets a mild attractive spring in the physics
-sim, and each topic renders a soft blurred halo (tinted with that
-topic's color) behind its nodes. There's no drawn line for
-supersession — conflict detection only ever chains a claim against
-another claim in the *same* topic (see `applyNewClaims` in
-`graphModel.js`), so a correction and what it supersedes are always
-already pulled into the same cluster; a dedicated edge would have been
-redundant, and a literal edge per same-topic pair doesn't scale (a
-5-claim topic is 10 lines as a complete graph). History is read on the
-node instead: a claim that corrected an earlier one renders with a
-faint stacked "card behind it," on top of the existing per-status
-treatment — alive claims sit raised with a soft molded shadow and a
-gentle glow; superseded ones sink flush and flat, smaller, and drop
-out of the topic's spring cluster's visual weight (though they stay in
-the same halo). Neumorphism is scoped to the graph's knots, buttons,
+of same-topic claims gets a mild attractive spring in the physics sim.
+There's no drawn line for supersession — conflict detection only ever
+chains a claim against another claim in the *same* topic (see
+`applyNewClaims` in `graphModel.js`), so a correction and what it
+supersedes are always already pulled into the same cluster; a
+dedicated edge would have been redundant, and a literal edge per
+same-topic pair doesn't scale (a 5-claim topic is 10 lines as a
+complete graph). History is read on the node instead: correction
+status gets a thin bronze ring, superseded claims sink flush and flat
+and shrink slightly — no separate "here's what came before" visual on
+the node itself; click it, or query it, and the full chain is in
+`ThreadPanel`.
+
+Each topic's cluster is shown as a soft blob, not one circle sized to
+its farthest node (an earlier version did that; it read as a shape
+snapping bigger or smaller rather than actually following the
+cluster). It's a proper metaball effect instead: one small blurred
+circle per node in the topic, fed through a shared filter that pushes
+blurred alpha through a steep threshold, so overlapping or nearby
+circles fuse into one continuous shape while isolated edges fade out
+below the threshold. The blob traces whatever shape the cluster
+actually is — stretches, bends, branches — rather than approximating
+it with one piece of geometry, and it eases (`cx`/`cy` transition on
+each node-circle) rather than snapping when the layout resettles or a
+node gets dragged. Neumorphism is scoped to the graph's knots, buttons,
 and cluster-filter rows (raised at rest / pressed-in when active) —
 everything else (cards, inputs, panels) stays flat.
 
