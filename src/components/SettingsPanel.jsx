@@ -114,10 +114,15 @@ export function SettingsPanel({ settings, onSettingsChange, apiKey, onApiKeyChan
               onChange={(e) => onRememberApiKeyChange(e.target.checked)}
               style={{ marginTop: "2px" }}
             />
-            <span style={hintStyle}>
-              Remember this key on this device. Stores it in plain text in this
-              browser's local storage — readable by any script running on this
-              page. Fine on a personal machine; skip it on anything shared.
+            <span>
+              <span style={{ ...hintStyle, display: "block", color: "var(--text-secondary)" }}>
+                Remember this key on this device
+              </span>
+              <span style={{ ...hintStyle, display: "block", marginTop: "4px" }}>
+                Stores it in plain text in this browser's local storage —
+                readable by any script running on this page. Fine on a
+                personal machine; skip it on anything shared.
+              </span>
             </span>
           </label>
         </div>

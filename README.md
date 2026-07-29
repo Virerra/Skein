@@ -124,14 +124,23 @@ overrides the token *values*, not the components, via
 
 ## Node editing
 
-Selecting a claim's chain in the right-hand panel (`ThreadPanel`)
-exposes **edit** (rewrite the text, or change its topic to
-recategorize it) and **discard** per claim. Discard is a soft delete —
-it sets `status: "discarded"`, which hides the claim from the graph,
-cluster filter, and query results, but the row stays in IndexedDB and
-still renders in a chain's history (tagged `[DISCARDED]`) if it was a
-link in one. Deliberate: "nothing is ever deleted or overwritten" is
-the product's whole premise, so true destructive delete isn't offered.
+Selecting a claim's chain (now a compact popover, `NodeMiniWindow` —
+see "Query / RAG") exposes **edit** (rewrite the text, change its
+topic to recategorize it, or rename its **label**) and **discard** per
+claim. A claim has both `text` (the full atomic claim) and `label` (a
+short, 2-4 word name) — the label is what actually renders on the graph
+node; `text` alone used to be truncated for that purpose, which got
+cluttered fast once several nodes sat near each other. Extraction and
+Categorize both generate a label automatically (same LLM call, no extra
+cost), but it's a plain editable field like anything else — rename a
+node by hand any time. Falls back to truncated text for anything that
+predates this field or where the model didn't cooperate, so nothing
+regresses below the old behavior. Discard is a soft delete — it sets
+`status: "discarded"`, which hides the claim from the graph, cluster
+filter, and query results, but the row stays in IndexedDB and still
+renders in a chain's history (tagged `[DISCARDED]`) if it was a link in
+one. Deliberate: "nothing is ever deleted or overwritten" is the
+product's whole premise, so true destructive delete isn't offered.
 
 ## Graph interactions
 
@@ -253,6 +262,17 @@ used to be:
   claims are atomic and short by design, so a chain rarely needs more
   room than that, and it frees the side panel for something that
   actually benefits from persistent space: the answer.
+- **Locate on graph**, inside the mini-window. Opening a chain from a
+  Sources click (not a graph click) has no natural on-screen position
+  to anchor near, so it centers in the viewport instead -- which on a
+  graph with a lot of nodes leaves no way to tell which one it's
+  actually about. Rather than draw a pointer line from the popup to the
+  node (fragile the moment the graph is panned or zoomed, since a fixed
+  DOM element and an SVG-space node position drift apart), Locate does
+  the more robust thing: reveals the node's topic if it's currently
+  hidden by the cluster filter, then asks `GraphCanvas` (via an
+  imperative `focusNode` handle) to actually center the view on it. The
+  existing selection ring does the rest.
 
 ## What's naive on purpose
 

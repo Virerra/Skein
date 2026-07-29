@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { getAllPositions, putPositions } from "../lib/db";
 
 const WIDTH = 800;
@@ -227,14 +227,13 @@ function Knot({ claim, pos, radius, selected, isRelateAnchor, dragging, topicCol
         textAnchor="middle"
         style={{ font: "var(--text-mono-sm)", fill: "var(--text-secondary)", pointerEvents: "none" }}
       >
-        {claim.text.slice(0, 30)}
-        {claim.text.length > 30 ? "…" : ""}
+        {claim.label || (claim.text.length > 28 ? claim.text.slice(0, 28) + "…" : claim.text)}
       </text>
     </g>
   );
 }
 
-export function GraphCanvas({
+export const GraphCanvas = forwardRef(function GraphCanvas({
   claims,
   onSelectClaim,
   selectedId,
@@ -243,7 +242,7 @@ export function GraphCanvas({
   relateMode = false,
   onCreateRelation,
   onDeleteRelation,
-}) {
+}, ref) {
   const svgRef = useRef(null);
   const positionsRef = useRef(new Map());
   const [, forceRender] = useState(0);
@@ -258,6 +257,19 @@ export function GraphCanvas({
   // later. IndexedDB reads are fast enough in practice that this just
   // means a near-instant blank canvas rather than a visible flash.
   const [positionsLoaded, setPositionsLoaded] = useState(false);
+
+  // Imperative escape hatch for "center the view on this node" -- used
+  // by the mini-window's Locate button. Deliberately not lifting pan/
+  // zoom state up to App.jsx for this: it's the one thing App needs to
+  // trigger here, not something it needs to own.
+  useImperativeHandle(ref, () => ({
+    focusNode(id) {
+      const pos = positionsRef.current.get(id);
+      if (!pos) return false;
+      setView((v) => ({ scale: v.scale, x: WIDTH / 2 - pos.x * v.scale, y: HEIGHT / 2 - pos.y * v.scale }));
+      return true;
+    },
+  }));
 
   useEffect(() => {
     getAllPositions()
@@ -528,7 +540,7 @@ export function GraphCanvas({
       <button onClick={handleOrganize} style={organizeButtonStyle}>Organize clusters</button>
     </div>
   );
-}
+});
 
 const zoomButtonStyle = {
   width: "28px",

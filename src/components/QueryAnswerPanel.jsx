@@ -65,6 +65,11 @@ export function QueryAnswerPanel({ queryText, busy, error, result, onOpenSource 
                   <div style={{ font: "var(--text-mono-sm)", color: "var(--accent-primary)", marginBottom: "2px" }}>
                     [{i + 1}] {c.topic}
                   </div>
+                  {c.label && (
+                    <div style={{ font: "var(--text-body-sm)", fontWeight: 600, color: "var(--text-primary)", marginBottom: "2px" }}>
+                      {c.label}
+                    </div>
+                  )}
                   <div style={{ font: "var(--text-body-sm)", color: "var(--text-secondary)" }}>{c.text}</div>
                 </div>
               );

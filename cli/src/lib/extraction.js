@@ -1,12 +1,11 @@
-// Extraction: turns a pasted transcript into a list of atomic claims.
-//
-// Thin dispatcher over pluggable providers (src/lib/providers/) -- each
-// provider is responsible only for "transcript in, raw
-// {text, topic, label}[] out"; the claim-shaping tail below
-// (id/timestamp/status) is shared so every provider produces identical
-// claim objects.
+// Same prompt and claim shape as the web app's src/lib/extraction.js.
+// Kept as a separate copy rather than a shared import -- see the CLI
+// README for why (short version: avoiding a cross-package ESM
+// resolution dependency between two independently-runnable tools).
+// If you change the extraction prompt in one place, change it in both.
 
-import { runProvider } from "./providers/dispatch";
+import { runProvider } from "./providers/dispatch.js";
+import { randomUUID } from "node:crypto";
 
 const EXTRACTION_SYSTEM_PROMPT = `You extract atomic claims from a pasted AI chat transcript.
 
@@ -23,31 +22,25 @@ Rules:
   later, even across different transcripts.
 - Assign a short display label (2-4 words, title case, e.g. "Postgres
   Over Mongo", "Auth Deadline") -- a name for the claim, not a summary
-  of it. This is what shows on the graph node itself, so it needs to
-  read on its own without the full claim text next to it.
+  of it.
 - Do not invent claims that aren't actually stated. Skip greetings,
   meta-commentary, and anything too vague to be a discrete claim.
 - Respond with ONLY a JSON array, no prose, no markdown fences. Each
   element: {"text": string, "topic": string, "label": string}`;
 
-export async function extractClaims({ transcript, sourceChat, settings, apiKey, signal }) {
+export async function extractClaims({ transcript, sourceChat, provider, model, apiKey, baseUrl }) {
   if (!transcript?.trim()) throw new Error("Transcript is empty.");
 
-  const parsed = await runProvider({ content: transcript, systemPrompt: EXTRACTION_SYSTEM_PROMPT, settings, apiKey, signal });
+  const parsed = await runProvider({ content: transcript, systemPrompt: EXTRACTION_SYSTEM_PROMPT, provider, model, apiKey, baseUrl });
 
   const now = Date.now();
   return parsed.map((c, i) => ({
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     text: c.text,
     topic: (c.topic || "general").toLowerCase().trim(),
-    // Fallback for a model that ignores the label field despite the
-    // instruction (smaller WebLLM models especially) -- truncated text
-    // is exactly what the node label used to always be, so this never
-    // regresses below the old behavior, just improves on it when the
-    // model cooperates.
     label: (c.label || "").trim() || (c.text.length > 28 ? c.text.slice(0, 28) + "…" : c.text),
-    timestamp: now + i, // preserves extraction order when source has no per-claim time
-    sourceChat: sourceChat || "untitled chat",
+    timestamp: now + i,
+    sourceChat: sourceChat || "untitled",
     status: "active",
     supersedes: null,
   }));

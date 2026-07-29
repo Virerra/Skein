@@ -31,7 +31,7 @@ export function QueryBar({ value, onChange, onSubmit, busy }) {
         onChange={onChange}
         onKeyDown={handleKeyDown}
         disabled={busy}
-        placeholder='"why postgres?" — press Enter'
+        placeholder="ask something — press Enter"
         style={{
           flex: 1,
           background: "transparent",

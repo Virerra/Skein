@@ -4,7 +4,7 @@ import { ThreadPanel } from "./ThreadPanel";
 const WIDTH = 340;
 const MAX_HEIGHT = 420;
 
-export function NodeMiniWindow({ chain, topic, anchor, onClose, onEdit, onDiscard }) {
+export function NodeMiniWindow({ chain, topic, anchor, onClose, onEdit, onDiscard, onLocate }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -27,6 +27,11 @@ export function NodeMiniWindow({ chain, topic, anchor, onClose, onEdit, onDiscar
   return (
     <div ref={ref} style={{ ...containerStyle, ...computePosition(anchor) }}>
       <button onClick={onClose} aria-label="Close" style={closeButtonStyle}>×</button>
+      {onLocate && (
+        <button onClick={onLocate} style={locateButtonStyle}>
+          ◎ Locate on graph
+        </button>
+      )}
       <ThreadPanel chain={chain} topic={topic} onEdit={onEdit} onDiscard={onDiscard} />
     </div>
   );
@@ -61,6 +66,7 @@ const containerStyle = {
   border: "1px solid var(--border-default)",
   borderRadius: "var(--radius-lg)",
   padding: "18px",
+  paddingTop: "36px",
   boxShadow: "var(--shadow-md)",
   zIndex: 200,
 };
@@ -75,4 +81,16 @@ const closeButtonStyle = {
   fontSize: "16px",
   lineHeight: 1,
   cursor: "pointer",
+};
+
+const locateButtonStyle = {
+  position: "absolute",
+  top: "12px",
+  left: "18px",
+  background: "transparent",
+  border: "none",
+  color: "var(--accent-primary)",
+  font: "var(--text-mono-sm)",
+  cursor: "pointer",
+  padding: 0,
 };

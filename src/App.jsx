@@ -45,6 +45,8 @@ export default function App() {
   const [apiKey, setApiKey] = useState(loadRememberedApiKey);
   const [rememberApiKey, setRememberApiKeyState] = useState(getRememberPreference);
   const abortControllerRef = useRef(null);
+  const graphRef = useRef(null);
+  const [pendingFocusId, setPendingFocusId] = useState(null);
 
   useEffect(() => {
     Promise.all([getAllClaims(), getAllRelations()])
@@ -115,6 +117,26 @@ export default function App() {
     if (!selectedTopics) return activeClaims;
     return activeClaims.filter((c) => selectedTopics.includes(c.topic));
   }, [activeClaims, selectedTopics]);
+
+  // Waits for a claim to actually be visible (its topic might need
+  // revealing first via handleLocate below) before asking GraphCanvas
+  // to center on it -- calling focusNode before the node has ever been
+  // positioned would silently do nothing.
+  useEffect(() => {
+    if (!pendingFocusId) return;
+    if (visibleClaims.some((c) => c.id === pendingFocusId)) {
+      const ok = graphRef.current?.focusNode(pendingFocusId);
+      if (ok) setPendingFocusId(null);
+    }
+  }, [pendingFocusId, visibleClaims]);
+
+  function handleLocate() {
+    if (!selectedClaimId) return;
+    const claim = claims.find((c) => c.id === selectedClaimId);
+    if (!claim) return;
+    setSelectedTopics((prev) => (prev && !prev.includes(claim.topic) ? [...prev, claim.topic] : prev));
+    setPendingFocusId(selectedClaimId);
+  }
 
   // Chain history uses the full, unfiltered claim list so a discarded
   // claim that was a link in a chain still appears in its history.
@@ -358,6 +380,7 @@ export default function App() {
             </div>
           ) : (
             <GraphCanvas
+              ref={graphRef}
               claims={visibleClaims}
               onSelectClaim={handleSelectClaim}
               selectedId={selectedClaimId}
@@ -391,6 +414,7 @@ export default function App() {
         onClose={handleCloseMiniWindow}
         onEdit={handleEditClaim}
         onDiscard={handleDiscardClaim}
+        onLocate={handleLocate}
       />
 
       <Modal

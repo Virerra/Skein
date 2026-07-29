@@ -1,18 +1,8 @@
-// Re-categorizes existing claims by asking the model to assign a
-// consistent topic label AND a short display label per claim, across
-// the whole set at once. Fixes two kinds of drift from claims being
-// extracted from different transcripts in isolation: the same real
-// subject getting inconsistently topic-labeled ("database" in one
-// transcript, "db setup" in another) and fragmenting into clusters
-// that should really be one, and claims that predate the label field
-// (or got a weak one) still showing raw truncated text as their node
-// name on the graph.
-//
-// NAIVE FIRST PASS -- sends every claim's full text in one request, no
-// batching. Fine at personal-tool scale (tens to low hundreds of
-// claims); would need chunking before it scales further than that.
+// Same prompt as the web app's src/lib/categorize.js -- see the note
+// at the top of extraction.js about why this is a copy, not a shared
+// import.
 
-import { runProvider } from "./providers/dispatch";
+import { runProvider } from "./providers/dispatch.js";
 
 const CATEGORIZE_SYSTEM_PROMPT = `You are given a JSON array of claims: [{"id": string, "text": string}].
 
@@ -23,19 +13,18 @@ For each claim:
   ("database" and "db setup" should become one) into a single
   consistent name across the whole set.
 - Assign a short display label (2-4 words, title case, e.g. "Postgres
-  Over Mongo") -- a name for the claim, not a summary. This is what
-  shows on the graph node itself, so keep it readable on its own.
+  Over Mongo") -- a name for the claim, not a summary.
 
 Respond with ONLY a JSON array, no prose, no markdown fences. One
 element per input claim, same ids, in any order:
 {"id": string, "topic": string, "label": string}`;
 
-export async function categorizeClaims({ claims, settings, apiKey, signal }) {
+export async function categorizeClaims({ claims, provider, model, apiKey, baseUrl }) {
   const candidates = claims.filter((c) => c.status !== "discarded");
   if (candidates.length === 0) throw new Error("No claims to categorize.");
 
   const payload = JSON.stringify(candidates.map((c) => ({ id: c.id, text: c.text })));
-  const result = await runProvider({ content: payload, systemPrompt: CATEGORIZE_SYSTEM_PROMPT, settings, apiKey, signal });
+  const result = await runProvider({ content: payload, systemPrompt: CATEGORIZE_SYSTEM_PROMPT, provider, model, apiKey, baseUrl });
 
   const byId = new Map(
     result

@@ -31,13 +31,20 @@ const fieldStyle = {
 function ClaimEditForm({ claim, onSave, onCancel }) {
   const [text, setText] = useState(claim.text);
   const [topic, setTopic] = useState(claim.topic);
+  const [label, setLabel] = useState(claim.label || "");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "6px" }}>
+      <input value={label} onChange={(e) => setLabel(e.target.value)} style={fieldStyle} placeholder="node label (2-4 words)" />
       <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} style={{ ...fieldStyle, resize: "vertical" }} />
       <input value={topic} onChange={(e) => setTopic(e.target.value)} style={fieldStyle} placeholder="topic" />
       <div style={{ display: "flex", gap: "8px" }}>
-        <Button size="sm" variant="primary" onClick={() => onSave({ text: text.trim(), topic: topic.trim().toLowerCase() })} disabled={!text.trim() || !topic.trim()}>
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={() => onSave({ text: text.trim(), topic: topic.trim().toLowerCase(), label: label.trim() })}
+          disabled={!text.trim() || !topic.trim()}
+        >
           Save
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
@@ -86,17 +93,24 @@ export function ThreadPanel({ chain, topic, onEdit, onDiscard }) {
                   }}
                 />
               ) : (
-                <div
-                  style={{
-                    font: "var(--text-body-sm)",
-                    color: c.status === "superseded" || c.status === "discarded" ? "var(--text-muted)" : "var(--text-primary)",
-                    textDecoration: c.status === "superseded" ? "line-through" : "none",
-                    textDecorationColor: "var(--accent-superseded)",
-                    marginBottom: "6px",
-                  }}
-                >
-                  {c.text}
-                </div>
+                <>
+                  {c.label && (
+                    <div style={{ font: "var(--text-body)", fontWeight: 600, color: "var(--text-primary)", marginBottom: "2px" }}>
+                      {c.label}
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      font: "var(--text-body-sm)",
+                      color: c.status === "superseded" || c.status === "discarded" ? "var(--text-muted)" : "var(--text-secondary)",
+                      textDecoration: c.status === "superseded" ? "line-through" : "none",
+                      textDecorationColor: "var(--accent-superseded)",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    {c.text}
+                  </div>
+                </>
               )}
 
               <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
