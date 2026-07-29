@@ -7,6 +7,7 @@
 // claim objects.
 
 import { runProvider } from "./providers/dispatch";
+import { relabelClaims } from "./relabel";
 
 const EXTRACTION_SYSTEM_PROMPT = `You extract atomic claims from a pasted AI chat transcript.
 
@@ -36,19 +37,38 @@ export async function extractClaims({ transcript, sourceChat, settings, apiKey, 
   const parsed = await runProvider({ content: transcript, systemPrompt: EXTRACTION_SYSTEM_PROMPT, settings, apiKey, signal });
 
   const now = Date.now();
-  return parsed.map((c, i) => ({
+  let claims = parsed.map((c, i) => ({
     id: crypto.randomUUID(),
     text: c.text,
     topic: (c.topic || "general").toLowerCase().trim(),
-    // Fallback for a model that ignores the label field despite the
-    // instruction (smaller WebLLM models especially) -- truncated text
-    // is exactly what the node label used to always be, so this never
-    // regresses below the old behavior, just improves on it when the
-    // model cooperates.
-    label: (c.label || "").trim() || (c.text.length > 28 ? c.text.slice(0, 28) + "…" : c.text),
+    label: (c.label || "").trim(), // may be empty here -- filled in below, not immediately truncated
     timestamp: now + i, // preserves extraction order when source has no per-claim time
     sourceChat: sourceChat || "untitled chat",
     status: "active",
     supersedes: null,
+  }));
+
+  // If the model complied with everything except the label (a real,
+  // observed failure mode, especially on smaller models asked to fill
+  // three fields in one JSON response), follow up with a dedicated,
+  // much simpler relabel call before resorting to truncated text. This
+  // is what makes the raw-text fallback below an actual last resort
+  // instead of the common case.
+  const missingLabels = claims.filter((c) => !c.label);
+  if (missingLabels.length > 0) {
+    try {
+      const relabeled = await relabelClaims({ claims: missingLabels, settings, apiKey, signal });
+      const byId = new Map(relabeled.map((r) => [r.id, r.label]));
+      claims = claims.map((c) => (byId.has(c.id) ? { ...c, label: byId.get(c.id) } : c));
+    } catch {
+      // Best-effort -- if the follow-up call itself fails, the
+      // truncation fallback below still applies. Never worse than
+      // before this existed, just an extra chance to do better.
+    }
+  }
+
+  return claims.map((c) => ({
+    ...c,
+    label: c.label || (c.text.length > 28 ? c.text.slice(0, 28) + "…" : c.text),
   }));
 }

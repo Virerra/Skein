@@ -1,5 +1,5 @@
 import { loadStore } from "../lib/store.js";
-import { buildClusters, getChain } from "../lib/graphModel.js";
+import { buildClusters, getChain, shortId } from "../lib/graphModel.js";
 
 function statusTag(c, isLast) {
   if (c.status === "discarded") return "DISCARDED";
@@ -39,7 +39,7 @@ export function runShow(positional) {
 
     console.log(`\n${topic}`);
     chain.forEach((c, i) => {
-      console.log(`  [${statusTag(c, i === chain.length - 1)}] ${c.label}`);
+      console.log(`  ${shortId(c.id)}  [${statusTag(c, i === chain.length - 1)}] ${c.label}`);
       console.log(`    ${c.text}`);
       console.log(`    (${c.sourceChat}, ${new Date(c.timestamp).toLocaleString()})`);
     });

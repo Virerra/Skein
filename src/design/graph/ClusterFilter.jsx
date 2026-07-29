@@ -31,14 +31,14 @@ export function ClusterFilter({ clusters, selected, onToggle, onDiscardCluster }
                   background: "transparent",
                   border: "none",
                   color: "var(--text-muted)",
-                  fontSize: "13px",
+                  fontSize: "16px",
                   lineHeight: 1,
                   cursor: "pointer",
                   padding: "2px",
                   flexShrink: 0,
                 }}
               >
-                🗑
+                ×
               </button>
             )}
           </label>

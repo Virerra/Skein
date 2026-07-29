@@ -1,5 +1,5 @@
 import { loadStore } from "../lib/store.js";
-import { buildClusters } from "../lib/graphModel.js";
+import { buildClusters, shortId } from "../lib/graphModel.js";
 
 export function runList() {
   const store = loadStore();
@@ -16,7 +16,7 @@ export function runList() {
     console.log(`\n${cluster.topic} (${cluster.count})`);
     cluster.claims.forEach((c) => {
       const tag = c.status === "superseded" ? "superseded" : c.status === "correction" ? "correction" : "active";
-      console.log(`  [${tag}] ${c.label}`);
+      console.log(`  ${shortId(c.id)}  [${tag}] ${c.label}`);
     });
   });
   console.log("");

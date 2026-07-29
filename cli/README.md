@@ -25,6 +25,44 @@ skein show database               # matches by topic, label, or text substring
 skein query "why did we pick postgres?"
 ```
 
+## Managing individual claims
+
+`list`, `show`, and `discarded` all print a short id (8 characters)
+next to every claim. Enough characters to be unambiguous is enough to
+type — same convention as `git`/`docker` — the CLI tells you plainly if
+a prefix matches more than one claim, rather than guessing which you
+meant.
+
+```bash
+skein discard a1b2c3d4          # soft-remove -- recoverable
+skein restore a1b2c3d4          # brings it back to whatever status it had
+skein discarded                 # lists everything currently discarded
+skein delete a1b2c3d4 --yes     # permanent -- the one real hard-delete
+```
+
+`delete` refuses to run without `--yes` and prints exactly what it's
+about to remove first — no interactive confirmation prompt, since this
+CLI is meant to be scriptable and a prompt that blocks on stdin is
+exactly the kind of thing that silently hangs a piped invocation or a
+script. The flag *is* the confirmation.
+
+## Fixing node names
+
+If a claim is showing raw truncated text instead of a real name (older
+claims from before labels existed, or a case where the model dropped
+the field), two options:
+
+```bash
+skein relabel   # refreshes labels only, doesn't touch topics
+```
+
+Extraction also self-corrects for this now: if a model returns a topic
+but drops the label, a dedicated single-purpose follow-up call fills it
+in before ever falling back to truncated text. Naming quality matters
+more here than in the web app — there's no graph, no color, no
+clustering to fall back on for orientation, a bad name is the whole
+problem when text is literally the only interface.
+
 `query` needs its own key even if you're using `--provider anthropic`
 for everything else: Anthropic has no embeddings API at all, so
 retrieval always goes through OpenAI's `/embeddings` endpoint

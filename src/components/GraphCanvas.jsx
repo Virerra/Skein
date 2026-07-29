@@ -184,10 +184,16 @@ function RelationLine({ a, b, onDelete }) {
   );
 }
 
-function Knot({ claim, pos, radius, selected, isRelateAnchor, dragging, topicColor, onPointerDown }) {
+function Knot({ claim, pos, radius, selected, isRelateAnchor, dragging, topicColor, scale, onPointerDown }) {
   const [hovered, setHovered] = React.useState(false);
   const color = claim.status === "superseded" ? "var(--color-slate)" : topicColor;
   const raised = claim.status !== "superseded";
+  // Below this zoom level, a dense cluster's labels overlap into
+  // unreadable noise -- hiding them by default (still shown on hover
+  // or selection, so an individual node is never actually unreachable)
+  // trades "always visible" for "actually legible." Zoom in, or click
+  // Organize to spread a cluster out, to get labels back everywhere.
+  const showLabel = scale >= 0.85 || hovered || selected;
 
   return (
     <g
@@ -222,13 +228,15 @@ function Knot({ claim, pos, radius, selected, isRelateAnchor, dragging, topicCol
       {isRelateAnchor && (
         <circle r={radius + 8} fill="none" stroke="var(--text-primary)" strokeWidth="1.6" strokeDasharray="3 3" />
       )}
-      <text
-        y={radius + 14}
-        textAnchor="middle"
-        style={{ font: "var(--text-mono-sm)", fill: "var(--text-secondary)", pointerEvents: "none" }}
-      >
-        {claim.label || (claim.text.length > 28 ? claim.text.slice(0, 28) + "…" : claim.text)}
-      </text>
+      {showLabel && (
+        <text
+          y={radius + 14}
+          textAnchor="middle"
+          style={{ font: "var(--text-mono-sm)", fill: "var(--text-secondary)", pointerEvents: "none" }}
+        >
+          {claim.label || (claim.text.length > 28 ? claim.text.slice(0, 28) + "…" : claim.text)}
+        </text>
+      )}
     </g>
   );
 }
@@ -518,6 +526,7 @@ export const GraphCanvas = forwardRef(function GraphCanvas({
                 isRelateAnchor={relateAnchor === c.id}
                 dragging={draggingId === c.id}
                 topicColor={topicColors.get(c.topic)}
+                scale={view.scale}
                 onPointerDown={(e) => handlePointerDown(c.id, e)}
               />
             );

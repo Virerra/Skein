@@ -46,3 +46,25 @@ export function getChain(claims, claimId) {
   }
   return chain;
 }
+
+// Full ids are UUIDs -- unwieldy to type or paste for a single-claim
+// operation like discard/restore/delete. Short id is what actually
+// gets shown and typed; git/docker-style prefix matching means you
+// only need enough characters to be unambiguous, not the whole thing.
+export function shortId(id) {
+  return id.slice(0, 8);
+}
+
+export function findClaimByIdPrefix(claims, prefix) {
+  const p = prefix.toLowerCase();
+  const matches = claims.filter((c) => c.id.toLowerCase().startsWith(p));
+
+  if (matches.length === 0) {
+    throw new Error(`No claim with id starting "${prefix}". Run \`skein list\` to see ids.`);
+  }
+  if (matches.length > 1) {
+    const shown = matches.slice(0, 5).map((c) => `  ${shortId(c.id)}  ${c.label}`).join("\n");
+    throw new Error(`"${prefix}" matches ${matches.length} claims, ambiguous -- use more characters:\n${shown}`);
+  }
+  return matches[0];
+}

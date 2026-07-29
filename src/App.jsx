@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getAllClaims, putClaim, putClaims, deleteClaims, getAllRelations, putRelation, deleteRelation, deleteRelations, putEmbeddings } from "./lib/db";
 import { extractClaims } from "./lib/extraction";
 import { categorizeClaims } from "./lib/categorize";
+import { relabelClaims } from "./lib/relabel";
 import { suggestRelations } from "./lib/relate";
 import { embedTexts } from "./lib/providers/embed";
 import { applyNewClaims, buildClusters, getChain } from "./lib/graphModel";
@@ -28,6 +29,7 @@ export default function App() {
   const [relations, setRelations] = useState([]);
   const [relateMode, setRelateMode] = useState(false);
   const [categorizing, setCategorizing] = useState(false);
+  const [relabeling, setRelabeling] = useState(false);
   const [suggestingRelations, setSuggestingRelations] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -311,6 +313,27 @@ export default function App() {
     }
   }
 
+  // Separate from Categorize on purpose -- refreshes only labels, never
+  // touches topic. The direct fix for claims stuck showing raw
+  // truncated text as their node name: older claims from before the
+  // label field existed, or ones where the model silently dropped it.
+  async function handleRelabel() {
+    if (activeClaims.length === 0) return;
+    setRelabeling(true);
+    setError(null);
+    try {
+      const relabeled = await relabelClaims({ claims, settings, apiKey });
+      const byId = new Map(relabeled.map((r) => [r.id, r.label]));
+      const updated = claims.map((c) => (byId.has(c.id) ? { ...c, label: byId.get(c.id) } : c));
+      await putClaims(updated);
+      setClaims(updated);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setRelabeling(false);
+    }
+  }
+
   function relationKey(aId, bId) {
     return [aId, bId].sort().join("::");
   }
@@ -415,20 +438,36 @@ export default function App() {
               <div style={{ font: "var(--text-mono-sm)", color: "var(--text-muted)", textTransform: "uppercase" }}>
                 Clusters
               </div>
-              <button
-                onClick={handleCategorize}
-                disabled={categorizing}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: categorizing ? "var(--text-muted)" : "var(--accent-primary)",
-                  font: "var(--text-mono-sm)",
-                  cursor: categorizing ? "default" : "pointer",
-                  padding: 0,
-                }}
-              >
-                {categorizing ? "Categorizing…" : "Categorize"}
-              </button>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  onClick={handleRelabel}
+                  disabled={relabeling}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: relabeling ? "var(--text-muted)" : "var(--accent-primary)",
+                    font: "var(--text-mono-sm)",
+                    cursor: relabeling ? "default" : "pointer",
+                    padding: 0,
+                  }}
+                >
+                  {relabeling ? "Relabeling…" : "Relabel"}
+                </button>
+                <button
+                  onClick={handleCategorize}
+                  disabled={categorizing}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: categorizing ? "var(--text-muted)" : "var(--accent-primary)",
+                    font: "var(--text-mono-sm)",
+                    cursor: categorizing ? "default" : "pointer",
+                    padding: 0,
+                  }}
+                >
+                  {categorizing ? "Categorizing…" : "Categorize"}
+                </button>
+              </div>
             </div>
             <ClusterFilter
               clusters={clusterFilterData}
