@@ -1,48 +1,93 @@
-// Retrieval over the claim graph.
+// Retrieval + synthesis (real RAG), replacing the original keyword-
+// overlap placeholder.
 //
-// NAIVE FIRST PASS — this is keyword overlap, not embedding-based RAG.
-// It's enough to make the query bar real and prove the "walk the
-// chain" behavior end to end. Swap the matching step for an embedding
-// similarity search once there's a reason to (i.e. once keyword
-// matching starts missing obvious matches in testing).
+// Two separate model calls, two separate provider choices:
+// - Embedding (query text, and any claim that doesn't have a stored
+//   vector yet) always goes through WebLLM locally, decoupled from
+//   whatever chat provider is selected -- see providers/embed.js for
+//   why (Anthropic has no embeddings API at all).
+// - Synthesizing the actual answer goes through whichever chat
+//   provider is selected in Settings, same as extraction/categorize.
 
-import { getChain, buildClusters } from "./graphModel";
+import { embedTexts, cosineSimilarity } from "./providers/embed";
+import { getAllEmbeddings, putEmbeddings } from "./db";
+import { buildClusters } from "./graphModel";
+import { runProvider } from "./providers/dispatch";
 
-function score(claim, queryWords) {
-  const text = claim.text.toLowerCase();
-  return queryWords.reduce((n, w) => (text.includes(w) ? n + 1 : n), 0);
-}
+const TOP_K = 6;
 
-export function runQuery(claims, queryText) {
-  const queryWords = queryText
-    .toLowerCase()
-    .replace(/[?"']/g, "")
-    .split(/\s+/)
-    .filter((w) => w.length > 2);
+const SYNTHESIS_SYSTEM_PROMPT = `You answer a question using ONLY the numbered
+claims provided below, each tagged with its topic.
 
-  const scored = claims
-    .map((c) => ({ claim: c, score: score(c, queryWords) }))
-    .filter((s) => s.score > 0)
-    .sort((a, b) => b.score - a.score);
+Rules:
+- Base your answer only on the given claims. If they don't contain enough to
+  answer, say that plainly instead of guessing or using outside knowledge.
+- Cite claims inline with their number in brackets, e.g. [1], wherever you
+  draw on one.
+- 2-4 sentences, unless the question genuinely needs more room.
 
-  if (scored.length === 0) {
-    return { matched: false, chain: [], summary: "no matching claims" };
+Respond with ONLY a JSON object, no prose, no markdown fences:
+{"answer": string, "citedIndices": number[]}`;
+
+export async function runQuery(claims, queryText, { settings, apiKey, signal } = {}) {
+  const active = claims.filter((c) => c.status !== "discarded");
+  if (!queryText.trim() || active.length === 0) {
+    return { matched: false, answer: null, sources: [] };
   }
 
-  const best = scored[0].claim;
+  const stored = await getAllEmbeddings();
+  const vectorById = new Map(stored.map((e) => [e.id, e.vector]));
 
-  // Anchor the chain on the topic's current head, not just whichever
-  // node in the chain happened to score highest on keyword overlap —
-  // otherwise a query that matches an older, superseded claim returns
-  // a truncated chain that never reaches the actual current answer.
-  const cluster = buildClusters(claims).find((cl) => cl.topic === best.topic);
-  const head = cluster?.head ?? best;
-  const chain = getChain(claims, head.id);
-  const current = chain[chain.length - 1];
+  // Backfill -- any active claim without a stored embedding yet (older
+  // claims from before this feature existed, or a rare failed embed at
+  // extraction time) gets embedded now instead of needing a separate
+  // reindex step. Costs the first query after new data shows up a
+  // little extra time; every query after that reads straight from
+  // storage.
+  const missing = active.filter((c) => !vectorById.has(c.id));
+  if (missing.length > 0) {
+    const vectors = await embedTexts(missing.map((c) => c.text));
+    const fresh = missing.map((c, i) => ({ id: c.id, vector: vectors[i] }));
+    await putEmbeddings(fresh);
+    fresh.forEach((r) => vectorById.set(r.id, r.vector));
+  }
+
+  const [queryVector] = await embedTexts([queryText]);
+
+  const scored = active
+    .map((c) => ({ claim: c, score: cosineSimilarity(queryVector, vectorById.get(c.id)) }))
+    .sort((a, b) => b.score - a.score);
+
+  // One claim per topic in the context set, resolved to that topic's
+  // CURRENT head -- semantic similarity has no idea what a correction
+  // is. A query can't be allowed to answer from a superseded claim
+  // just because its old wording happened to match more closely than
+  // whatever replaced it.
+  const clusterByTopic = new Map(buildClusters(claims).map((cl) => [cl.topic, cl]));
+  const seenTopics = new Set();
+  const sources = [];
+  for (const { claim } of scored) {
+    if (sources.length >= TOP_K) break;
+    if (seenTopics.has(claim.topic)) continue;
+    seenTopics.add(claim.topic);
+    sources.push(clusterByTopic.get(claim.topic)?.head ?? claim);
+  }
+
+  const contextText = sources.map((c, i) => `[${i + 1}] (${c.topic}) ${c.text}`).join("\n");
+  const userContent = `Question: ${queryText}\n\nClaims:\n${contextText}`;
+
+  const result = await runProvider({ content: userContent, systemPrompt: SYNTHESIS_SYSTEM_PROMPT, settings, apiKey, signal });
+
+  const rawIndices = Array.isArray(result?.citedIndices) ? result.citedIndices : [];
+  // 1-indexed, matching the [n] markers the model was given and (should
+  // have) echoed in its answer -- validated against the real source
+  // count rather than trusted blindly.
+  const citedIndices = rawIndices.filter((i) => Number.isInteger(i) && i >= 1 && i <= sources.length);
 
   return {
     matched: true,
-    chain,
-    summary: `${chain.length} hop${chain.length === 1 ? "" : "s"} · chain · current: ${current.text}`,
+    answer: typeof result?.answer === "string" ? result.answer : "",
+    sources, // full retrieved list, in the exact order [n] markers in the answer refer to -- never filtered or renumbered, so citation numbers always line up
+    citedIndices: citedIndices.length > 0 ? citedIndices : sources.map((_, i) => i + 1), // model didn't cite cleanly -- treat everything retrieved as relevant rather than showing nothing
   };
 }

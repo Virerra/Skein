@@ -410,7 +410,7 @@ export function GraphCanvas({
     forceRender((n) => n + 1);
   }
 
-  function handlePointerUp() {
+  function handlePointerUp(e) {
     const drag = dragRef.current;
     dragRef.current = null;
     setDraggingId(null);
@@ -433,7 +433,7 @@ export function GraphCanvas({
         // anchor stays armed, so one node can be connected to several in a row
       }
     } else {
-      onSelectClaim(drag.id);
+      onSelectClaim(drag.id, { x: e.clientX, y: e.clientY });
     }
   }
 

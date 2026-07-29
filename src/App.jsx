@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { getAllClaims, putClaim, putClaims, getAllRelations, putRelation, deleteRelation } from "./lib/db";
+import { getAllClaims, putClaim, putClaims, getAllRelations, putRelation, deleteRelation, putEmbeddings } from "./lib/db";
 import { extractClaims } from "./lib/extraction";
 import { categorizeClaims } from "./lib/categorize";
 import { suggestRelations } from "./lib/relate";
+import { embedTexts } from "./lib/providers/embed";
 import { applyNewClaims, buildClusters, getChain } from "./lib/graphModel";
 import { runQuery } from "./lib/query";
 import { loadSettings, saveSettings, applyTheme } from "./lib/settings";
@@ -11,7 +12,8 @@ import { GraphCanvas } from "./components/GraphCanvas";
 import { Wordmark } from "./components/Wordmark";
 import { IngestPanel } from "./components/IngestPanel";
 import { DraftsModal } from "./components/DraftsModal";
-import { ThreadPanel } from "./components/ThreadPanel";
+import { QueryAnswerPanel } from "./components/QueryAnswerPanel";
+import { NodeMiniWindow } from "./components/NodeMiniWindow";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ClusterFilter } from "./design/graph/ClusterFilter";
 import { QueryBar } from "./design/graph/QueryBar";
@@ -29,8 +31,11 @@ export default function App() {
   const [error, setError] = useState(null);
   const [selectedTopics, setSelectedTopics] = useState(null); // null = all
   const [selectedClaimId, setSelectedClaimId] = useState(null);
+  const [miniWindowAnchor, setMiniWindowAnchor] = useState(null);
   const [queryText, setQueryText] = useState("");
-  const [queryResult, setQueryResult] = useState(null);
+  const [queryResult, setQueryResult] = useState(null); // full {matched, answer, sources, citedIndices} from runQuery, not a one-line summary
+  const [queryBusy, setQueryBusy] = useState(false);
+  const [queryError, setQueryError] = useState(null);
   const [ingestOpen, setIngestOpen] = useState(false);
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [pendingDraftId, setPendingDraftId] = useState(null);
@@ -116,6 +121,15 @@ export default function App() {
       await putClaims(merged);
       setClaims(merged);
       setIngestOpen(false);
+
+      // Best-effort -- embeds new claims now so the first query after
+      // this doesn't have to wait on it. If this fails for any reason
+      // (WebGPU unavailable, etc.), runQuery's own lazy backfill picks
+      // up anything still missing the next time a query needs it.
+      embedTexts(newClaims.map((c) => c.text))
+        .then((vectors) => putEmbeddings(newClaims.map((c, i) => ({ id: c.id, vector: vectors[i] }))))
+        .catch(() => {});
+
       return true;
     } catch (e) {
       setError(e.message);
@@ -136,23 +150,41 @@ export default function App() {
     const updated = { ...claim, ...updates };
     await putClaim(updated);
     setClaims((prev) => prev.map((c) => (c.id === id ? updated : c)));
+
+    // The stored embedding reflects the old text -- stale the moment
+    // it changes. Best-effort, same fallback as extraction: query.js's
+    // lazy backfill catches it if this fails.
+    if (updates.text && updates.text !== claim.text) {
+      embedTexts([updated.text])
+        .then(([vector]) => putEmbeddings([{ id, vector }]))
+        .catch(() => {});
+    }
   }
 
   async function handleDiscardClaim(id) {
     await handleEditClaim(id, { status: "discarded" });
   }
 
-  function handleQuery(e) {
-    const val = e.target.value;
-    setQueryText(val);
-    if (!val.trim()) {
+  function handleQueryChange(e) {
+    setQueryText(e.target.value);
+  }
+
+  async function handleQuerySubmit() {
+    if (!queryText.trim() || queryBusy) return;
+    setQueryBusy(true);
+    setQueryError(null);
+    try {
+      const result = await runQuery(activeClaims, queryText, { settings, apiKey });
+      setQueryResult(result);
+      if (result.matched && result.sources.length > 0) {
+        setSelectedClaimId(null); // a fresh query supersedes whatever node mini-window was open
+        setMiniWindowAnchor(null);
+      }
+    } catch (e) {
+      setQueryError(e.message);
       setQueryResult(null);
-      return;
-    }
-    const result = runQuery(activeClaims, val);
-    setQueryResult(result.summary);
-    if (result.matched) {
-      setSelectedClaimId(result.chain[result.chain.length - 1].id);
+    } finally {
+      setQueryBusy(false);
     }
   }
 
@@ -217,6 +249,21 @@ export default function App() {
     } finally {
       setSuggestingRelations(false);
     }
+  }
+
+  function handleSelectClaim(id, anchor) {
+    setSelectedClaimId(id);
+    setMiniWindowAnchor(anchor || null);
+  }
+
+  function handleOpenSource(id) {
+    setSelectedClaimId(id);
+    setMiniWindowAnchor(null); // opened from the side panel, not a graph click -- no position to anchor near, so it centers
+  }
+
+  function handleCloseMiniWindow() {
+    setSelectedClaimId(null);
+    setMiniWindowAnchor(null);
   }
 
   return (
@@ -299,7 +346,7 @@ export default function App() {
           ) : (
             <GraphCanvas
               claims={visibleClaims}
-              onSelectClaim={setSelectedClaimId}
+              onSelectClaim={handleSelectClaim}
               selectedId={selectedClaimId}
               topicColors={topicColors}
               relations={relations}
@@ -310,18 +357,28 @@ export default function App() {
           )}
         </div>
         <div style={{ marginTop: "12px" }}>
-          <QueryBar value={queryText} onChange={handleQuery} result={queryResult} />
+          <QueryBar value={queryText} onChange={handleQueryChange} onSubmit={handleQuerySubmit} busy={queryBusy} />
         </div>
       </main>
 
       <aside style={{ padding: "20px 18px", borderLeft: "1px solid var(--border-default)", overflowY: "auto" }}>
-        <ThreadPanel
-          chain={selectedChain}
-          topic={selectedChain?.[0]?.topic}
-          onEdit={handleEditClaim}
-          onDiscard={handleDiscardClaim}
+        <QueryAnswerPanel
+          queryText={queryText}
+          busy={queryBusy}
+          error={queryError}
+          result={queryResult}
+          onOpenSource={handleOpenSource}
         />
       </aside>
+
+      <NodeMiniWindow
+        chain={selectedChain}
+        topic={selectedChain?.[0]?.topic}
+        anchor={miniWindowAnchor}
+        onClose={handleCloseMiniWindow}
+        onEdit={handleEditClaim}
+        onDiscard={handleDiscardClaim}
+      />
 
       <Modal
         open={ingestOpen}

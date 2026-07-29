@@ -33,12 +33,21 @@
 // because drag gestures update far too often (every pointermove) to
 // write through the claims store without visible jank. Only written at
 // the end of a drag, and after a full layout recompute.
+//
+// embedding: { id: string, vector: number[] }
+//
+// One entry per claim, computed once at extraction/categorize time
+// (see lib/query.js) so a query never waits on embedding work -- only
+// the query text itself gets embedded live. Always via WebLLM locally
+// (lib/providers/embed.js), regardless of which provider is selected
+// for chat, since Anthropic has no embeddings API to route through.
 
 const DB_NAME = "skein";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const CLAIMS_STORE = "claims";
 const RELATIONS_STORE = "relations";
 const POSITIONS_STORE = "positions";
+const EMBEDDINGS_STORE = "embeddings";
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -56,6 +65,9 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains(POSITIONS_STORE)) {
         db.createObjectStore(POSITIONS_STORE, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(EMBEDDINGS_STORE)) {
+        db.createObjectStore(EMBEDDINGS_STORE, { keyPath: "id" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -125,3 +137,6 @@ export const deleteRelation = (id) => deleteOne(RELATIONS_STORE, id);
 
 export const getAllPositions = () => getAll(POSITIONS_STORE);
 export const putPositions = (positions) => putMany(POSITIONS_STORE, positions);
+
+export const getAllEmbeddings = () => getAll(EMBEDDINGS_STORE);
+export const putEmbeddings = (embeddings) => putMany(EMBEDDINGS_STORE, embeddings);

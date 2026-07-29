@@ -33,13 +33,20 @@ transcript" to paste a chat transcript and extract claims from it.
   settings. The API key itself is never stored here — see "Model
   providers".
 - `src/lib/graphModel.js` — conflict detection + chain building.
-- `src/lib/query.js` — retrieval for the query bar.
+- `src/lib/query.js` — real retrieval (embedding similarity) +
+  synthesis. See "Query / RAG" below.
+- `src/lib/providers/embed.js` — local embeddings via WebLLM, decoupled
+  from chat provider.
+- `src/lib/categorize.js`, `src/lib/relate.js` — bulk topic
+  re-labeling and cross-topic relation suggestions, both LLM-driven.
 - `src/lib/topicColor.js` — deterministic, collision-checked topic →
   hue assignment; theme-aware (see "Visual identity").
 - `src/components/` — app-specific UI: `IngestPanel`/`TranscriptEditor`
-  (ingest modal), `SettingsPanel` (provider + theme config),
-  `GraphCanvas` (the graph itself), `ThreadPanel` (chain detail, claim
-  edit/discard controls).
+  (ingest modal), `DraftsModal` (saved transcript drafts),
+  `SettingsPanel` (provider + theme config), `GraphCanvas` (the graph
+  itself), `QueryAnswerPanel` (the right panel's query-answer view),
+  `NodeMiniWindow` (the compact chain popover for clicking a node,
+  wraps `ThreadPanel`'s chain-detail/edit/discard content unchanged).
 - `src/design/` — components and tokens originally pulled from the
   Claude Design system export (`Skein_Design_System.zip`). The
   neumorphic soft-shadow treatment from that export was mostly
@@ -180,7 +187,64 @@ whatever it superseded. That's gone -- clustering is by topic now (see
 "Visual identity" below), and correction history moved onto the node
 itself (bronze ring, slightly larger radius) rather than a line back to
 a predecessor. Nothing about supersession chains changed underneath;
-`ThreadPanel` still shows the full chain when you click a claim.
+click a claim and its full chain still shows, now in a compact
+mini-window (`NodeMiniWindow`) rather than a persistent side panel --
+see "Query / RAG" below for why that panel changed jobs.
+
+## Query / RAG
+
+Real retrieval and synthesis, not the keyword-overlap placeholder this
+used to be:
+
+- **Embedding is always local (WebLLM), decoupled from chat provider.**
+  Anthropic has no embeddings API at all -- not a gap in this app, a
+  gap in their product, they point people to a third-party (Voyage
+  AI). Rather than build a second BYOK path just for this,
+  `lib/providers/embed.js` always runs a real local embedding model
+  (`snowflake-arctic-embed-s`, confirmed present in WebLLM's own
+  prebuilt config, not assumed), regardless of which provider is
+  selected for chat. Free, no key, same behavior whether you're on
+  Anthropic, OpenAI-compatible, or WebLLM for everything else.
+- **Embedded at creation time, with lazy backfill.** A new claim gets
+  embedded right after extraction (fire-and-forget; a failure there
+  isn't fatal). Editing a claim's text re-embeds it, since the old
+  vector reflects text that no longer exists. Anything still missing a
+  vector when a query actually runs -- older claims from before this
+  feature, or a rare failed embed -- gets embedded right then instead
+  of needing a separate reindex step. Costs the first query after new
+  data shows up a little extra time; every query after that reads
+  straight from storage.
+- **Retrieval is cosine similarity, chain-aware.** Brute-force over
+  stored vectors (`lib/db.js`'s `embeddings` store) -- no ANN index,
+  none needed at personal-tool scale. One claim per topic makes it into
+  context, so a handful of unrelated claims sharing a topic can't crowd
+  out other relevant topics. Whichever claim from a topic scores
+  highest always gets resolved to that topic's *current* head before
+  being used as context -- semantic similarity has no idea what a
+  correction is, so a query can never answer from a superseded claim
+  just because its old wording happened to match more closely than
+  whatever replaced it.
+- **Synthesis goes through whichever chat provider is selected in
+  Settings** (same as extraction/categorize), asked to answer strictly
+  from the retrieved claims and cite them inline as `[1]`, `[2]`, etc.
+  Reuses the exact same "system prompt + content in, structured JSON
+  out" dispatch (`providers/dispatch.js`) as every other LLM call in
+  this app -- the response shape is a JSON *object* here
+  (`{answer, citedIndices}`) instead of an array, but `parseClaimsResponse`
+  never actually assumed array-shaped output, so nothing needed to
+  change to support it.
+- **The query bar is submit-driven, not live.** It used to fire
+  `runQuery` on every keystroke, fine for instant local keyword
+  matching, not fine once that keystroke could trigger a real embedding
+  call plus an LLM call. Press Enter now.
+- **The right panel switched jobs.** It used to be a persistent chain
+  viewer, driven by whatever node you'd last clicked. Now it's
+  dedicated to the query answer (prose + a numbered, clickable Sources
+  list) once you've run one. Clicking a node instead opens a small
+  popover (`NodeMiniWindow`) anchored near wherever you clicked --
+  claims are atomic and short by design, so a chain rarely needs more
+  room than that, and it frees the side panel for something that
+  actually benefits from persistent space: the answer.
 
 ## What's naive on purpose
 
@@ -188,8 +252,12 @@ a predecessor. Nothing about supersession chains changed underneath;
   different-text. It'll misfire on any topic that legitimately holds
   multiple simultaneous active claims. Replace with real similarity
   scoring + an LLM judgment call once this starts mattering.
-- **Retrieval** (`query.js`) is keyword overlap, not embeddings. Fine
-  for proving the "walk the chain" UX, not real RAG yet.
+- **Retrieval doesn't expand through the relations graph.** A query
+  matching claim A won't pull in claim B just because you manually (or
+  AI-) connected them -- only embedding similarity decides what's
+  retrieved right now. Relation-hopping is a natural next step, held
+  off deliberately rather than shipped half-considered alongside
+  embeddings and synthesis in the same pass.
 - **Categorize** (above) is one request for the whole claim set, no
   chunking yet.
 
