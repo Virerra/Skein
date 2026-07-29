@@ -1,7 +1,7 @@
 import React from "react";
 import { NeumorphicShadow } from "../core/neumorphism";
 
-export function ClusterFilter({ clusters, selected, onToggle }) {
+export function ClusterFilter({ clusters, selected, onToggle, onDiscardCluster }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
       {clusters.map((c) => {
@@ -18,6 +18,29 @@ export function ClusterFilter({ clusters, selected, onToggle }) {
             <span style={{ position: "relative", width: 10, height: 10, borderRadius: "50%", background: c.color, flexShrink: 0 }} />
             <span style={{ position: "relative", fontFamily: "var(--font-ui)", fontSize: "14px", color: "var(--text-primary)", flex: 1 }}>{c.name}</span>
             <span style={{ position: "relative", fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-muted)" }}>{c.count}</span>
+            {onDiscardCluster && (
+              <button
+                onClick={(e) => {
+                  e.preventDefault(); // this is inside a <label>; without this, clicking would also toggle the checkbox
+                  e.stopPropagation();
+                  onDiscardCluster(c.id);
+                }}
+                aria-label={`Discard all claims in ${c.name}`}
+                style={{
+                  position: "relative",
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text-muted)",
+                  fontSize: "13px",
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  padding: "2px",
+                  flexShrink: 0,
+                }}
+              >
+                🗑
+              </button>
+            )}
           </label>
         );
       })}

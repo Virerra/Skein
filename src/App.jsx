@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { getAllClaims, putClaim, putClaims, getAllRelations, putRelation, deleteRelation, putEmbeddings } from "./lib/db";
+import { getAllClaims, putClaim, putClaims, deleteClaims, getAllRelations, putRelation, deleteRelation, deleteRelations, putEmbeddings } from "./lib/db";
 import { extractClaims } from "./lib/extraction";
 import { categorizeClaims } from "./lib/categorize";
 import { suggestRelations } from "./lib/relate";
@@ -13,6 +13,7 @@ import { GraphCanvas } from "./components/GraphCanvas";
 import { Wordmark } from "./components/Wordmark";
 import { IngestPanel } from "./components/IngestPanel";
 import { DraftsModal } from "./components/DraftsModal";
+import { DiscardedModal } from "./components/DiscardedModal";
 import { QueryAnswerPanel } from "./components/QueryAnswerPanel";
 import { NodeMiniWindow } from "./components/NodeMiniWindow";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -39,6 +40,7 @@ export default function App() {
   const [queryError, setQueryError] = useState(null);
   const [ingestOpen, setIngestOpen] = useState(false);
   const [draftsOpen, setDraftsOpen] = useState(false);
+  const [discardedOpen, setDiscardedOpen] = useState(false);
   const [pendingDraftId, setPendingDraftId] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState(loadSettings);
@@ -82,6 +84,7 @@ export default function App() {
   // [DISCARDED]) inside a chain's history via ThreadPanel below --
   // "delete" here means hidden and reversible, not destroyed.
   const activeClaims = useMemo(() => claims.filter((c) => c.status !== "discarded"), [claims]);
+  const discardedClaims = useMemo(() => claims.filter((c) => c.status === "discarded"), [claims]);
 
   const clusters = useMemo(() => buildClusters(activeClaims), [activeClaims]);
 
@@ -197,7 +200,77 @@ export default function App() {
   }
 
   async function handleDiscardClaim(id) {
-    await handleEditClaim(id, { status: "discarded" });
+    const claim = claims.find((c) => c.id === id);
+    if (!claim || claim.status === "discarded") return;
+    await handleEditClaim(id, { status: "discarded", previousStatus: claim.status });
+  }
+
+  // Discards every non-discarded claim in a topic at once -- the
+  // sidebar's per-cluster trash icon. Same previousStatus preservation
+  // as a single discard, just applied to the whole set in one write.
+  async function handleDiscardCluster(topic) {
+    const affected = claims.filter((c) => c.topic === topic && c.status !== "discarded");
+    if (affected.length === 0) return;
+    if (
+      !window.confirm(
+        `Discard all ${affected.length} claim${affected.length === 1 ? "" : "s"} in "${topic}"? They'll move to Discarded, where you can restore or permanently delete them.`
+      )
+    ) {
+      return;
+    }
+    const updated = claims.map((c) =>
+      c.topic === topic && c.status !== "discarded" ? { ...c, status: "discarded", previousStatus: c.status } : c
+    );
+    await putClaims(updated);
+    setClaims(updated);
+  }
+
+  // Restores to whatever status was saved at discard time -- not
+  // hardcoded to "active". A claim that was "correction" or already
+  // "superseded" when discarded goes back to exactly that, not to a
+  // status it never actually had.
+  //
+  // Known edge case, left unhandled deliberately: if a claim was
+  // discarded while active, and a *new* extraction ran on that same
+  // topic in the meantime, restoring the old one can produce two
+  // simultaneously "active" claims for one topic -- something normal
+  // extraction flow never produces on its own. Rare enough (needs that
+  // exact sequence) that building around it now would be exactly the
+  // speculative-completeness trap worth avoiding; revisit if it
+  // actually happens.
+  async function handleRestoreClaims(ids) {
+    const idSet = new Set(ids);
+    const updated = claims.map((c) => {
+      if (!idSet.has(c.id)) return c;
+      const { previousStatus, ...rest } = c;
+      return { ...rest, status: previousStatus || "active" };
+    });
+    await putClaims(updated);
+    setClaims(updated);
+  }
+
+  // The one real delete in the app -- everywhere else, "gone" means
+  // "discarded," recoverable. This removes the row from IndexedDB
+  // outright, plus any relations pointing at it (dangling relations
+  // otherwise sit unused forever -- harmless, but not clean). Positions
+  // and embeddings for a deleted id are left as-is: genuinely inert
+  // once the claim itself is gone, and adding delete paths for two
+  // more stores wasn't worth it for storage that'll never be read
+  // again anyway.
+  async function handlePermanentlyDeleteClaims(ids) {
+    const idSet = new Set(ids);
+    await deleteClaims(ids);
+    setClaims((prev) => prev.filter((c) => !idSet.has(c.id)));
+
+    const orphanedRelations = relations.filter((r) => idSet.has(r.a) || idSet.has(r.b));
+    if (orphanedRelations.length > 0) {
+      await deleteRelations(orphanedRelations.map((r) => r.id));
+      setRelations((prev) => prev.filter((r) => !idSet.has(r.a) && !idSet.has(r.b)));
+    }
+
+    if (selectedClaimId && idSet.has(selectedClaimId)) {
+      handleCloseMiniWindow();
+    }
   }
 
   function handleQueryChange(e) {
@@ -330,6 +403,12 @@ export default function App() {
           <Button variant="ghost" onClick={() => setDraftsOpen(true)}>Drafts</Button>
         </div>
 
+        <div style={{ marginTop: "8px" }}>
+          <Button variant="ghost" onClick={() => setDiscardedOpen(true)}>
+            Discarded{discardedClaims.length > 0 ? ` (${discardedClaims.length})` : ""}
+          </Button>
+        </div>
+
         {clusterFilterData.length > 0 && (
           <div style={{ marginTop: "20px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
@@ -359,6 +438,7 @@ export default function App() {
                   prev.includes(topic) ? prev.filter((t) => t !== topic) : [...prev, topic]
                 )
               }
+              onDiscardCluster={handleDiscardCluster}
             />
           </div>
         )}
@@ -437,6 +517,14 @@ export default function App() {
           setPendingDraftId(id);
           setIngestOpen(true);
         }}
+      />
+
+      <DiscardedModal
+        open={discardedOpen}
+        onClose={() => setDiscardedOpen(false)}
+        discardedClaims={discardedClaims}
+        onRestore={handleRestoreClaims}
+        onPermanentlyDelete={handlePermanentlyDeleteClaims}
       />
 
       <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} title="Settings">

@@ -183,12 +183,27 @@ Categorize both generate a label automatically (same LLM call, no extra
 cost), but it's a plain editable field like anything else — rename a
 node by hand any time. Falls back to truncated text for anything that
 predates this field or where the model didn't cooperate, so nothing
-regresses below the old behavior. Discard is a soft delete — it sets
-`status: "discarded"`, which hides the claim from the graph, cluster
-filter, and query results, but the row stays in IndexedDB and still
-renders in a chain's history (tagged `[DISCARDED]`) if it was a link in
-one. Deliberate: "nothing is ever deleted or overwritten" is the
-product's whole premise, so true destructive delete isn't offered.
+regresses below the old behavior. Discard is a soft delete by
+default — it sets `status: "discarded"` (preserving `previousStatus`,
+so restore knows exactly what to put back rather than guessing), which
+hides the claim from the graph, cluster filter, and query results, but
+the row stays in IndexedDB and still renders in a chain's history
+(tagged `[DISCARDED]`) if it was a link in one.
+
+**Discarded** (sidebar button, shows a live count) is where those
+claims actually live — multi-select, restore in bulk, or permanently
+delete in bulk. Permanent delete is the one real hard-delete in the
+app: an actual IndexedDB `.delete()`, not a status flag, and it cleans
+up any relations pointing at the deleted claim too (dangling relations
+otherwise just sit unused forever). Everywhere else in Skein, "nothing
+is ever deleted or overwritten" holds — this is the deliberate single
+exception, reached only through an explicit, confirmed, multi-step
+action, never a side effect of anything automatic.
+
+A whole cluster can be discarded at once too — the trash icon on each
+row in the sidebar's cluster list — for clearing out a test topic or a
+subject that turned out not to matter, without discarding claims one
+at a time.
 
 ## Graph interactions
 

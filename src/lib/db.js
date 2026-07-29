@@ -8,12 +8,21 @@
 //   sourceChat: string           -- name of the silo/chat this came from
 //   status: "active" | "superseded" | "correction" | "discarded"
 //   supersedes: string | null    -- id of the claim this one replaces, if any
+//   previousStatus?: string      -- set only while status is "discarded"; what
+//                                   to restore to. Without this, restoring a
+//                                   discarded claim would have no way to know
+//                                   whether it used to be active, a
+//                                   correction, or already-superseded.
 // }
 //
 // Nothing is ever deleted or overwritten by an extraction run. A new
 // claim that conflicts with an existing one on the same topic gets
 // status "correction" and supersedes: <old id>. The old claim's status
 // flips from "active" to "superseded" — but the row itself stays.
+// Discard is still soft -- deleteClaims (below) is the one place that
+// actually removes a row, and it's a deliberate, explicit, user-
+// confirmed action from the Discarded view, not something extraction
+// or categorization ever does on their own.
 //
 // relation: {
 //   id: string (uuid)
@@ -116,6 +125,17 @@ async function deleteOne(storeName, id) {
   });
 }
 
+async function deleteMany(storeName, ids) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readwrite");
+    const store = tx.objectStore(storeName);
+    ids.forEach((id) => store.delete(id));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 async function clearStore(storeName) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -129,11 +149,13 @@ async function clearStore(storeName) {
 export const getAllClaims = () => getAll(CLAIMS_STORE);
 export const putClaim = (claim) => putOne(CLAIMS_STORE, claim);
 export const putClaims = (claims) => putMany(CLAIMS_STORE, claims);
+export const deleteClaims = (ids) => deleteMany(CLAIMS_STORE, ids);
 export const clearAll = () => clearStore(CLAIMS_STORE);
 
 export const getAllRelations = () => getAll(RELATIONS_STORE);
 export const putRelation = (relation) => putOne(RELATIONS_STORE, relation);
 export const deleteRelation = (id) => deleteOne(RELATIONS_STORE, id);
+export const deleteRelations = (ids) => deleteMany(RELATIONS_STORE, ids);
 
 export const getAllPositions = () => getAll(POSITIONS_STORE);
 export const putPositions = (positions) => putMany(POSITIONS_STORE, positions);
