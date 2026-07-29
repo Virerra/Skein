@@ -120,6 +120,22 @@ the product's whole premise, so true destructive delete isn't offered.
 
 ## Graph interactions
 
+- **Positions persist** — dragging a node, or a fresh layout settling
+  after new claims arrive, is saved to IndexedDB (`positions` store,
+  `lib/db.js`) and restored on the next load. Written at the end of a
+  drag, not on every pointermove, and after every layout recompute.
+  Hiding a topic via the cluster filter doesn't lose its remembered
+  position either — layout recomputes merge into the existing position
+  map rather than replacing it, so anything currently hidden keeps
+  whatever was last known for it.
+- **Organize clusters** (top-right, above the graph) — a full reflow,
+  distinct from the everyday incremental layout. Ignores wherever nodes
+  currently are (dragged or not) and reseeds every node near a target
+  zone assigned to its topic (`computeTopicZones`, evenly spaced around
+  the canvas), then lets the usual physics settle from there. The
+  result becomes the new remembered layout. Use this when clusters have
+  drifted into overlapping each other after a lot of manual dragging or
+  many rounds of Categorize reshuffling topics.
 - **Zoom/pan** — scroll to zoom (toward the cursor), drag empty canvas
   space to pan, +/−/reset buttons bottom-right for discoverability.
   Dragging a node still repositions it; that's unaffected.

@@ -25,11 +25,20 @@
 // two claims, independent of topic clustering and independent of
 // supersession -- e.g. tying a claim in one topic to a claim in
 // another that the topic labels alone don't capture.
+//
+// position: { id: string, x: number, y: number }
+//
+// Where a node currently sits on the canvas -- separate from claims
+// because it's a view concern, not part of what a claim *is*, and
+// because drag gestures update far too often (every pointermove) to
+// write through the claims store without visible jank. Only written at
+// the end of a drag, and after a full layout recompute.
 
 const DB_NAME = "skein";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const CLAIMS_STORE = "claims";
 const RELATIONS_STORE = "relations";
+const POSITIONS_STORE = "positions";
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -44,6 +53,9 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains(RELATIONS_STORE)) {
         db.createObjectStore(RELATIONS_STORE, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(POSITIONS_STORE)) {
+        db.createObjectStore(POSITIONS_STORE, { keyPath: "id" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -110,3 +122,6 @@ export const clearAll = () => clearStore(CLAIMS_STORE);
 export const getAllRelations = () => getAll(RELATIONS_STORE);
 export const putRelation = (relation) => putOne(RELATIONS_STORE, relation);
 export const deleteRelation = (id) => deleteOne(RELATIONS_STORE, id);
+
+export const getAllPositions = () => getAll(POSITIONS_STORE);
+export const putPositions = (positions) => putMany(POSITIONS_STORE, positions);

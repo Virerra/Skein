@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { getAllPositions, putPositions } from "../lib/db";
 
 const WIDTH = 800;
 const HEIGHT = 560;
@@ -15,25 +16,33 @@ function hashSeed(str) {
 }
 
 // Force-directed layout: repulsion between every pair of nodes, gentle
-// pull toward center, and an attractive spring between every pair of
-// nodes that share a topic -- this is what clusters the graph by
-// category instead of by supersession. Supersession never needed its
-// own spring: conflict detection only ever chains a claim against
+// pull toward a center point, and an attractive spring between every
+// pair of nodes that share a topic -- this is what clusters the graph
+// by category instead of by supersession. Supersession never needed
+// its own spring: conflict detection only ever chains a claim against
 // another claim in the *same* topic (see applyNewClaims in
 // graphModel.js), so a correction and what it supersedes are always
 // already in the same topic-pair set below.
-function computeLayout(ids, topicGroups, seedPositions) {
+//
+// centerOf(id) -> {x,y} is optional and defaults to the canvas center
+// for every node -- the normal, everyday layout. Organize (below)
+// passes a per-topic zone instead, so each cluster gets pulled toward
+// its own patch of canvas rather than all competing for the same
+// center point.
+function computeLayout(ids, topicGroups, seedPositions, centerOf) {
+  const getCenter = centerOf || (() => ({ x: WIDTH / 2, y: HEIGHT / 2 }));
   const positions = new Map();
   ids.forEach((id) => {
     const seed = seedPositions.get(id);
     if (seed) {
       positions.set(id, { ...seed });
     } else {
+      const center = getCenter(id);
       const angle = (hashSeed(id) % 360) * (Math.PI / 180);
       const radius = 60 + (hashSeed(id) % 140);
       positions.set(id, {
-        x: WIDTH / 2 + Math.cos(angle) * radius,
-        y: HEIGHT / 2 + Math.sin(angle) * radius,
+        x: center.x + Math.cos(angle) * radius,
+        y: center.y + Math.sin(angle) * radius,
       });
     }
   });
@@ -90,14 +99,37 @@ function computeLayout(ids, topicGroups, seedPositions) {
     ids.forEach((id) => {
       const p = positions.get(id);
       const f = forces.get(id);
-      p.x += (f.x + (WIDTH / 2 - p.x) * 0.01) * 0.6;
-      p.y += (f.y + (HEIGHT / 2 - p.y) * 0.01) * 0.6;
+      const center = getCenter(id);
+      p.x += (f.x + (center.x - p.x) * 0.01) * 0.6;
+      p.y += (f.y + (center.y - p.y) * 0.01) * 0.6;
       p.x = Math.max(36, Math.min(WIDTH - 36, p.x));
       p.y = Math.max(36, Math.min(HEIGHT - 36, p.y));
     });
   }
 
   return positions;
+}
+
+// Evenly spaced target points around the canvas, one per topic --
+// what Organize pulls each cluster toward, so distinct topics settle
+// into distinct regions instead of physics alone deciding whether
+// they overlap.
+function computeTopicZones(topics) {
+  const zones = new Map();
+  const n = topics.length;
+  if (n === 0) return zones;
+  if (n === 1) {
+    zones.set(topics[0], { x: WIDTH / 2, y: HEIGHT / 2 });
+    return zones;
+  }
+  const cx = WIDTH / 2;
+  const cy = HEIGHT / 2;
+  const layoutRadius = Math.min(WIDTH, HEIGHT) * 0.34;
+  topics.forEach((topic, i) => {
+    const angle = (i / n) * Math.PI * 2 - Math.PI / 2;
+    zones.set(topic, { x: cx + Math.cos(angle) * layoutRadius, y: cy + Math.sin(angle) * layoutRadius });
+  });
+  return zones;
 }
 
 // Soft blob behind each topic's nodes -- proximity plus this halo
@@ -220,6 +252,24 @@ export function GraphCanvas({
   const [relateAnchor, setRelateAnchor] = useState(null);
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
   const panRef = useRef(null);
+  // Gates the first layout run: without it, the very first render would
+  // seed nodes fresh, run 150 iterations of physics, and paint that,
+  // only to immediately jump once the real saved positions load a beat
+  // later. IndexedDB reads are fast enough in practice that this just
+  // means a near-instant blank canvas rather than a visible flash.
+  const [positionsLoaded, setPositionsLoaded] = useState(false);
+
+  useEffect(() => {
+    getAllPositions()
+      .then((saved) => saved.forEach((p) => positionsRef.current.set(p.id, { x: p.x, y: p.y })))
+      .catch(() => {}) // fail open -- worst case, layout just starts fresh instead of restoring
+      .finally(() => setPositionsLoaded(true));
+  }, []);
+
+  function persistPositions(positions) {
+    const records = Array.from(positions, ([id, p]) => ({ id, x: p.x, y: p.y }));
+    putPositions(records).catch(() => {}); // best-effort -- a failed save just means next session starts fresh, not worth surfacing as an error to the user
+  }
 
   useEffect(() => {
     if (!relateMode) setRelateAnchor(null);
@@ -241,12 +291,37 @@ export function GraphCanvas({
   const idsSignature = claims.map((c) => `${c.id}:${c.topic}`).sort().join(",");
 
   useEffect(() => {
+    if (!positionsLoaded) return;
     const ids = claims.map((c) => c.id);
     const positions = computeLayout(ids, topicGroups, positionsRef.current);
-    positionsRef.current = positions;
+    // Merge, don't replace -- computeLayout only returns entries for
+    // the ids passed in, i.e. currently-visible claims (App.jsx's
+    // cluster filter can hide others). Replacing the ref wholesale
+    // would silently forget remembered positions for anything hidden
+    // at this exact moment, recoverable only by a page reload.
+    positions.forEach((p, id) => positionsRef.current.set(id, p));
     forceRender((n) => n + 1);
+    persistPositions(positionsRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idsSignature]);
+  }, [idsSignature, positionsLoaded]);
+
+  // Full reflow: ignores current (possibly dragged, possibly organic)
+  // positions and reseeds every node near its topic's own zone, then
+  // lets physics settle from there. Distinct from the everyday layout
+  // effect above, which preserves whatever's already on screen and
+  // only nudges things via the topic spring -- Organize is the
+  // explicit "start over, cleanly" action.
+  function handleOrganize() {
+    const topics = Array.from(topicGroups.keys());
+    const zones = computeTopicZones(topics);
+    const topicOf = new Map(claims.map((c) => [c.id, c.topic]));
+    const centerOf = (id) => zones.get(topicOf.get(id)) || { x: WIDTH / 2, y: HEIGHT / 2 };
+    const ids = claims.map((c) => c.id);
+    const positions = computeLayout(ids, topicGroups, new Map(), centerOf);
+    positions.forEach((p, id) => positionsRef.current.set(id, p));
+    forceRender((n) => n + 1);
+    persistPositions(positionsRef.current);
+  }
 
   // Raw point in the fixed 0..WIDTH/0..HEIGHT viewBox space (before pan/zoom).
   function toViewboxPoint(clientX, clientY) {
@@ -341,7 +416,12 @@ export function GraphCanvas({
     setDraggingId(null);
     window.removeEventListener("pointermove", handlePointerMove);
     window.removeEventListener("pointerup", handlePointerUp);
-    if (!drag || drag.moved) return;
+    if (!drag) return;
+
+    if (drag.moved) {
+      persistPositions(positionsRef.current); // dragged somewhere new -- remember it
+      return;
+    }
 
     if (relateMode) {
       if (relateAnchor === null) {
@@ -444,6 +524,8 @@ export function GraphCanvas({
           {relateAnchor ? "Click another node to connect — or click the armed one again to cancel" : "Click a node to start connecting"}
         </div>
       )}
+
+      <button onClick={handleOrganize} style={organizeButtonStyle}>Organize clusters</button>
     </div>
   );
 }
@@ -471,4 +553,18 @@ const hintBadgeStyle = {
   padding: "6px 10px",
   font: "var(--text-mono-sm)",
   color: "var(--text-secondary)",
+};
+
+const organizeButtonStyle = {
+  position: "absolute",
+  top: "12px",
+  right: "12px",
+  padding: "6px 12px",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--border-default)",
+  background: "var(--surface-raised)",
+  color: "var(--text-secondary)",
+  fontFamily: "var(--font-ui)",
+  fontSize: "12px",
+  cursor: "pointer",
 };
