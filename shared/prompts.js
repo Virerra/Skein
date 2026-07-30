@@ -80,3 +80,23 @@ Rules:
 
 Respond with ONLY a JSON object, no prose, no markdown fences:
 {"answer": string, "citedIndices": number[]}`;
+
+// Added in response to real feedback (a dev.to comment) on a real gap:
+// same-topic-different-text used to mean "automatic correction," full
+// stop, which is wrong when two claims differ in scope rather than
+// truth ("Postgres for the user table" vs "Postgres for the audit log"
+// are both true at once, not a correction chain). This asks the model
+// to actually judge contradiction vs. compatibility instead of using
+// topic-sharing as a proxy for it.
+export const CONFLICT_CHECK_PROMPT = `You are given two claims stated about the same subject, at two different points in time.
+
+A (earlier): the first claim
+B (later): the second claim
+
+Decide: does B actually contradict or reverse A (a real correction, a
+decision that changed), or can both be true at the same time (different
+scope, different aspect, or otherwise compatible facts that just happen to
+share a subject)?
+
+Respond with ONLY a JSON object, no prose, no markdown fences:
+{"contradicts": boolean}`;

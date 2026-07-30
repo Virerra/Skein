@@ -131,17 +131,21 @@ up immediately:
   answering. Real constraint of their API, explained in the CLI's own
   README so it isn't a confusing surprise mid-command.
 
-## Prompt sharing
+## Shared logic (`shared/`)
 
-[`shared/prompts.js`](shared/prompts.js), a repo-root sibling of both
-`src/` and `cli/`, holds the extraction, categorize, relabel, and query
-synthesis prompts — the one place they're actually written, imported
-by both `src/lib/` and `cli/src/lib/` rather than kept as hand-synced
-copies. This wasn't the original setup: for a while these genuinely
-were separate files, and they'd already drifted by the time this
-changed, one real difference (the CLI's extraction prompt was missing
-a sentence the web app's had) had crept in from a fix applied to only
-one side.
+[`shared/prompts.js`](shared/prompts.js) and [`shared/graphModel.js`](shared/graphModel.js),
+repo-root siblings of both `src/` and `cli/`, hold the actual
+extraction/categorize/relabel/query-synthesis/conflict-check prompts
+and the pure claim-graph logic (conflict detection, chain-building,
+clustering) — the one place each is actually written, imported by both
+`src/lib/` and `cli/src/lib/` rather than kept as hand-synced copies.
+This wasn't the original setup: for a while these genuinely were
+separate files, and they'd already drifted by the time the prompts
+moved here — one real difference (the CLI's extraction prompt was
+missing a sentence the web app's had) had crept in from a fix applied
+to only one side. `graphModel.js` joined `shared/` later, for the same
+reason: it's pure logic with zero provider-specific code, no reason
+for the two copies to ever legitimately differ.
 
 Deliberately *not* shared: the provider-dispatch/transport layer
 (`src/lib/providers/` and `cli/src/lib/providers/`). That's genuinely
@@ -150,7 +154,10 @@ app supports three providers including a browser-only local model
 (WebLLM) and passes a `settings` object; the CLI is BYOK-only across
 two providers with flat `{provider, model, apiKey, baseUrl}` params.
 Sharing that layer too would mean papering over a real difference
-rather than removing a fake one.
+rather than removing a fake one. Each side's `graphModel.js` is a thin
+wrapper that imports the shared pure logic and wires up its own
+contradiction-checker on top of its own provider layer — same pattern
+as extraction, categorize, and relabel.
 
 ## Model providers
 
@@ -390,10 +397,29 @@ used to be:
 
 ## What's naive on purpose
 
-- **Conflict detection** (`graphModel.js`) is same-topic-label,
-  different-text. It'll misfire on any topic that legitimately holds
-  multiple simultaneous active claims. Replace with real similarity
-  scoring + an LLM judgment call once this starts mattering.
+- **Conflict detection** (`shared/graphModel.js`) used to be pure
+  same-topic-label, different-text — flagged from day one as
+  misfiring on any topic that legitimately holds multiple
+  simultaneous active claims. It did: an external reader (a dev.to
+  comment) pointed out the exact case — "Postgres for the user table"
+  and "Postgres for the audit log" are both true at once, not a
+  correction chain, and the old heuristic would've superseded the
+  first one. Fixed by gating same-topic-different-text through an
+  actual LLM contradiction check (`CONFLICT_CHECK_PROMPT` in
+  `shared/prompts.js`) before treating it as a correction — same-topic
+  is still what *triggers* the check, but no longer what *decides* the
+  outcome on its own. Fails toward the original behavior (treat as a
+  contradiction) if the check itself errors, rather than silently
+  doing something new and unverified the moment it breaks.
+
+  One known gap this surfaced rather than solved: when the check finds
+  the claims are genuinely different-scope, both stay active, but
+  `buildClusters`'s "head" selection still only surfaces *one* active
+  claim per topic (first match wins) for display and retrieval. Real
+  support for multiple simultaneously-current claims per topic is a
+  bigger follow-up — this fix stops the false "correction" from being
+  recorded, which was the actual harm, but the UI/retrieval side of
+  truly co-displaying both isn't built yet.
 - **Retrieval doesn't expand through the relations graph.** A query
   matching claim A won't pull in claim B just because you manually (or
   AI-) connected them -- only embedding similarity decides what's

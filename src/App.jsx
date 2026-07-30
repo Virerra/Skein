@@ -214,7 +214,7 @@ export default function App() {
     abortControllerRef.current = controller;
     try {
       const newClaims = await extractClaims({ transcript, sourceChat, settings, apiKey, signal: controller.signal });
-      const merged = applyNewClaims(claims, newClaims);
+      const merged = await applyNewClaims(claims, newClaims, settings, apiKey, controller.signal);
       await putClaims(merged);
       setClaims(merged);
       setIngestOpen(false);
@@ -489,17 +489,19 @@ export default function App() {
           />
         </div>
 
-        <Button variant="primary" fullWidth onClick={() => { setError(null); setPendingDraftId(null); setIngestOpen(true); }}>Add transcript</Button>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <div style={{ flex: 1 }}>
+            <Button variant="primary" fullWidth onClick={() => { setError(null); setPendingDraftId(null); setIngestOpen(true); }}>Add transcript</Button>
+          </div>
+          <div style={{ flex: 1 }}>
+            <Button variant="secondary" fullWidth onClick={() => setDraftsOpen(true)}>Drafts</Button>
+          </div>
+        </div>
 
-        <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-          <div style={{ flex: 1 }}>
-            <Button variant="secondary" size="sm" fullWidth onClick={() => setDraftsOpen(true)}>Drafts</Button>
-          </div>
-          <div style={{ flex: 1 }}>
-            <Button variant="secondary" size="sm" fullWidth onClick={() => setDiscardedOpen(true)}>
-              Discarded{discardedClaims.length > 0 ? ` · ${discardedClaims.length}` : ""}
-            </Button>
-          </div>
+        <div style={{ marginTop: "8px" }}>
+          <Button variant="secondary" size="sm" fullWidth onClick={() => setDiscardedOpen(true)}>
+            Discarded{discardedClaims.length > 0 ? ` (${discardedClaims.length})` : ""}
+          </Button>
         </div>
 
         {clusterFilterData.length > 0 && (

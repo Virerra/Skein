@@ -104,14 +104,20 @@ inlining it into every claim would make the file unreadable.
   design choice; the web app works around it by always embedding
   locally via WebLLM, which doesn't exist in plain Node.
 
-## Prompts are shared, the provider layer isn't
+## Shared logic, the provider layer isn't
 
-`../shared/prompts.js` (one level up from this folder, at the repo
-root) holds the actual prompt content — extraction, categorize,
-relabel, and query synthesis — imported by both this CLI's `src/lib/`
-files and the web app's. Not copies kept manually in sync anymore:
-both sides import the literal same file, so a prompt change made once
-applies everywhere automatically.
+`../shared/prompts.js` and `../shared/graphModel.js` (one level up, at
+the repo root) hold the actual prompt content and the pure claim-graph
+logic — extraction/categorize/relabel/query-synthesis/conflict-check
+prompts, plus conflict detection, chain-building, and clustering —
+imported by both this CLI's `src/lib/` files and the web app's. Not
+copies kept manually in sync: both sides import the literal same
+files, so a fix made once applies everywhere automatically. Conflict
+detection in particular used to be a naive same-topic-different-text
+heuristic on both sides, documented from the start as misfiring on
+claims that differ in scope rather than truth — a real dev.to comment
+caught exactly that case, so it's now gated behind an actual LLM
+contradiction check instead of assuming same-topic means correction.
 
 What's deliberately *not* shared is the provider-dispatch/transport
 layer (`src/lib/providers/`) — that's genuinely different between the

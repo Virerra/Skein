@@ -1,51 +1,37 @@
-// Same naive-on-purpose conflict detection as the web app's
-// src/lib/graphModel.js: same topic, different text, existing claim
-// for that topic still active -> chain it as a correction instead of
-// two competing active claims. See that file's comment for the caveat
-// (misfires on topics that legitimately hold multiple active claims at
-// once).
+// Re-exports the shared claim-graph logic (../../../shared/graphModel.js)
+// with a real LLM-backed contradiction checker wired in for
+// applyNewClaims -- same logic the web app runs, not a copy of it; only
+// the provider call underneath the checker differs (flat provider/model
+// params here instead of a settings object). shortId/findClaimByIdPrefix
+// below are CLI-only -- the web app has no equivalent need for them.
 
-export function applyNewClaims(existingClaims, newClaims) {
-  const claims = [...existingClaims];
+import {
+  applyNewClaims as applyNewClaimsShared,
+  buildClusters,
+  getChain,
+} from "../../../shared/graphModel.js";
+import { runProvider } from "./providers/dispatch.js";
+import { CONFLICT_CHECK_PROMPT } from "../../../shared/prompts.js";
 
-  for (const incoming of newClaims) {
-    const activeSameTopic = claims.find((c) => c.topic === incoming.topic && c.status === "active");
-
-    if (activeSameTopic && activeSameTopic.text !== incoming.text) {
-      activeSameTopic.status = "superseded";
-      claims.push({ ...incoming, status: "correction", supersedes: activeSameTopic.id });
-    } else if (!activeSameTopic) {
-      claims.push(incoming);
-    }
+async function checkContradiction({ existingText, incomingText }, provider, model, apiKey, baseUrl) {
+  const content = `A (earlier): "${existingText}"\nB (later): "${incomingText}"`;
+  try {
+    const result = await runProvider({ content, systemPrompt: CONFLICT_CHECK_PROMPT, provider, model, apiKey, baseUrl });
+    return typeof result?.contradicts === "boolean" ? result.contradicts : true;
+  } catch {
+    // Check itself failed -- fall back to the original naive behavior
+    // (treat as contradiction) rather than silently skipping the check.
+    return true;
   }
-
-  return claims;
 }
 
-export function buildClusters(claims) {
-  const byTopic = new Map();
-  for (const c of claims) {
-    if (!byTopic.has(c.topic)) byTopic.set(c.topic, []);
-    byTopic.get(c.topic).push(c);
-  }
-
-  return Array.from(byTopic.entries()).map(([topic, topicClaims]) => {
-    const sorted = [...topicClaims].sort((a, b) => a.timestamp - b.timestamp);
-    const head = sorted.find((c) => c.status === "active" || c.status === "correction");
-    return { topic, claims: sorted, count: sorted.length, head };
-  });
+export async function applyNewClaims(existingClaims, newClaims, provider, model, apiKey, baseUrl) {
+  return applyNewClaimsShared(existingClaims, newClaims, (pair) =>
+    checkContradiction(pair, provider, model, apiKey, baseUrl)
+  );
 }
 
-export function getChain(claims, claimId) {
-  const byId = new Map(claims.map((c) => [c.id, c]));
-  const chain = [];
-  let current = byId.get(claimId);
-  while (current) {
-    chain.unshift(current);
-    current = current.supersedes ? byId.get(current.supersedes) : null;
-  }
-  return chain;
-}
+export { buildClusters, getChain };
 
 // Full ids are UUIDs -- unwieldy to type or paste for a single-claim
 // operation like discard/restore/delete. Short id is what actually

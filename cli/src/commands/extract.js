@@ -26,7 +26,7 @@ export async function runExtract(positional, flags) {
   });
 
   const store = loadStore();
-  store.claims = applyNewClaims(store.claims, newClaims);
+  store.claims = await applyNewClaims(store.claims, newClaims, provider, model, apiKey, baseUrl);
   saveStore(store);
 
   console.log(`Extracted ${newClaims.length} claim${newClaims.length === 1 ? "" : "s"} -> ${storePath()}`);
