@@ -88,15 +88,24 @@ Respond with ONLY a JSON object, no prose, no markdown fences:
 // are both true at once, not a correction chain). This asks the model
 // to actually judge contradiction vs. compatibility instead of using
 // topic-sharing as a proxy for it.
+//
+// Three-way verdict, not a forced boolean -- a follow-up comment on the
+// same thread pointed out that forcing a binary answer hides genuine
+// model uncertainty. "uncertain" is treated the same as "compatible"
+// by the caller (don't auto-correct) -- the safer default when
+// confidence is genuinely low, matching the same fail-toward-caution
+// principle already used when the check itself errors outright.
 export const CONFLICT_CHECK_PROMPT = `You are given two claims stated about the same subject, at two different points in time.
 
 A (earlier): the first claim
 B (later): the second claim
 
-Decide: does B actually contradict or reverse A (a real correction, a
-decision that changed), or can both be true at the same time (different
-scope, different aspect, or otherwise compatible facts that just happen to
-share a subject)?
+Decide one of three things:
+- "contradicts" -- B actually reverses or corrects A (a real decision change)
+- "compatible" -- both can be true at once (different scope, different
+  aspect, or otherwise compatible facts that just happen to share a subject)
+- "uncertain" -- genuinely ambiguous from the text alone; don't force a
+  guess either way
 
 Respond with ONLY a JSON object, no prose, no markdown fences:
-{"contradicts": boolean}`;
+{"verdict": "contradicts" | "compatible" | "uncertain"}`;

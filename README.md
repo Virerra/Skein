@@ -408,18 +408,36 @@ used to be:
   actual LLM contradiction check (`CONFLICT_CHECK_PROMPT` in
   `shared/prompts.js`) before treating it as a correction — same-topic
   is still what *triggers* the check, but no longer what *decides* the
-  outcome on its own. Fails toward the original behavior (treat as a
-  contradiction) if the check itself errors, rather than silently
-  doing something new and unverified the moment it breaks.
+  outcome on its own.
 
-  One known gap this surfaced rather than solved: when the check finds
-  the claims are genuinely different-scope, both stay active, but
-  `buildClusters`'s "head" selection still only surfaces *one* active
-  claim per topic (first match wins) for display and retrieval. Real
-  support for multiple simultaneously-current claims per topic is a
-  bigger follow-up — this fix stops the false "correction" from being
-  recorded, which was the actual harm, but the UI/retrieval side of
-  truly co-displaying both isn't built yet.
+  The check itself is a three-way verdict (`contradicts` /
+  `compatible` / `uncertain`), not a forced boolean — a follow-up
+  comment on the same thread pointed out that forcing a binary answer
+  hides genuine model uncertainty. `uncertain` degrades to the same
+  outcome as `compatible` (don't auto-correct), and any unrecognized
+  or missing verdict fails toward the *other* safe default (treat as
+  contradiction, matching the pre-fix behavior) — same principle
+  applied to two different failure modes: an uncertain-but-valid
+  answer degrades one way, a broken-or-nonsensical one degrades the
+  other, and neither silently does something new and unverified.
+
+  What's deliberately not built yet: an actual "flagged for human
+  resolution" status with UI to review it, which the same comment
+  raised as a nice property this approach opens the door to. That's a
+  real feature, not a bugfix — new status, new UI surface — and unlike
+  the fix above, there's no concrete case yet demonstrating it's
+  needed, just a sound design principle. Parked for the same reason
+  relation-hop retrieval is: worth building once something real shows
+  it's necessary, not before.
+
+  One remaining known gap either way: when claims are genuinely
+  different-scope, both stay active, but `buildClusters`'s "head"
+  selection still only surfaces *one* active claim per topic for
+  display and retrieval (first match wins). Real support for multiple
+  simultaneously-current claims per topic is a bigger follow-up — this
+  fix stops the false "correction" from being recorded, which was the
+  actual harm, but the UI/retrieval side of truly co-displaying both
+  isn't built yet.
 - **Retrieval doesn't expand through the relations graph.** A query
   matching claim A won't pull in claim B just because you manually (or
   AI-) connected them -- only embedding similarity decides what's

@@ -17,7 +17,15 @@ async function checkContradiction({ existingText, incomingText }, provider, mode
   const content = `A (earlier): "${existingText}"\nB (later): "${incomingText}"`;
   try {
     const result = await runProvider({ content, systemPrompt: CONFLICT_CHECK_PROMPT, provider, model, apiKey, baseUrl });
-    return typeof result?.contradicts === "boolean" ? result.contradicts : true;
+    const verdict = result?.verdict;
+    if (verdict === "contradicts") return true;
+    if (verdict === "compatible" || verdict === "uncertain") return false;
+    // Anything else -- missing field, a value outside the three
+    // expected ones -- means the model didn't actually answer the
+    // question asked. Same failure class as the catch below: fail
+    // toward the safe default (treat as contradiction) rather than
+    // silently resolving an unrecognized response to "don't correct."
+    return true;
   } catch {
     // Check itself failed -- fall back to the original naive behavior
     // (treat as contradiction) rather than silently skipping the check.
